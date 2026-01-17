@@ -2,7 +2,9 @@ requests
 python-dotenv
 pandas
 streamlit
-torch
+datetime
+torch==2.5.1+cu121 \
+  --index-url https://download.pytorch.org/whl/cu121
 transformers
 opencv-python
 pillow
