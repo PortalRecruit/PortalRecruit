@@ -68,11 +68,14 @@ class SingleTeamIngester:
     # --------------------------------------------------
     # TEAM LOOKUP (FIXED)
     # --------------------------------------------------
-    def find_texas_am_team_id(self):
+        def find_texas_am_team_id(self):
+        """Finds the Synergy team ID for Texas A&M Aggies."""
         print("🔍 Resolving Texas A&M team ID...")
 
         skip = 0
         take = 500
+
+        normalized_target = normalize("texasamaggies")
 
         while True:
             response = self.client._get(
@@ -80,29 +83,36 @@ class SingleTeamIngester:
                 params={"take": take, "skip": skip}
             )
 
-            teams = response.get("data", [])
-            if not teams:
+            if not response:
                 break
 
-            for wrapper in teams:
+            team_wrappers = response.get("data", [])
+            if not team_wrappers:
+                break
+
+            for wrapper in team_wrappers:
                 team = wrapper.get("data", wrapper)
 
+                # The Synergy docs show these fields are valid:
+                # id, name, market, alias (if present) :contentReference[oaicite:1]{index=1}
                 name = normalize(team.get("name", ""))
                 market = normalize(team.get("market", ""))
+                alias = normalize(team.get("alias", ""))
 
-                combined = name + market
+                combined = f"{market}{name}{alias}"
 
-                if any(alias in combined for alias in TAMU_ALIASES):
-                    print(f"✅ Found Texas A&M: {team.get('name')} ({team['id']})")
+                if normalized_target in combined:
+                    print(f"✅ Found Texas A&M team: {team.get('market')} {team.get('name')} ({team['id']})")
                     return team["id"]
 
-            if len(teams) < take:
+            if len(team_wrappers) < take:
                 break
 
             skip += take
             time.sleep(0.2)
 
-        raise RuntimeError("Texas A&M team not found in Synergy team list")
+        print("❌ Texas A&M team not found in Synergy team list.")
+        return None
 
     # --------------------------------------------------
     # INGESTION
