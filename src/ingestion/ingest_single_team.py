@@ -69,7 +69,6 @@ class SingleTeamIngester:
     # TEAM LOOKUP (FIXED)
     # --------------------------------------------------
         def find_texas_am_team_id(self):
-        """Finds the Synergy team ID for Texas A&M Aggies."""
         print("🔍 Resolving Texas A&M team ID...")
 
         skip = 0
