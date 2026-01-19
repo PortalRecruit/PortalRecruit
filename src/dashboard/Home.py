@@ -17,7 +17,7 @@ VECTOR_DB_PATH = os.path.join(PROJECT_ROOT, "data/vector_db")
 LOGO_PATH = os.path.join(PROJECT_ROOT, "www", "SKOUT_LOGO.png")
 BG_IMAGE_PATH = os.path.join(PROJECT_ROOT, "www", "SKOUT_BUCKETS.jpg")
 
-# --- LOAD CONFIG ---
+# --- LOAD LEAGUE CONFIG ---
 try:
     from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
     from config.ncaa_dii_mens_basketball import NCAA_DII_MENS_BASKETBALL
@@ -38,14 +38,13 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
-# --- CUSTOM CSS (DARK MODE & BRANDING) ---
+# --- CUSTOM CSS (DARK MODE, BRANDING, & HERO CARD) ---
 def get_base64_image(image_path):
     if not os.path.exists(image_path): return ""
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
 def inject_custom_css():
-    # Load background image if available
     bg_encoded = get_base64_image(BG_IMAGE_PATH)
     bg_style = ""
     if bg_encoded:
@@ -57,69 +56,77 @@ def inject_custom_css():
         }}
         """
     else:
-        bg_style = """
-        .stApp {
-            background-color: #020617; /* Slate 950 */
-        }
-        """
+        bg_style = ".stApp { background-color: #020617; }"
 
     st.markdown(f"""
     <style>
-        /* BASE THEME */
         {bg_style}
-        
         h1, h2, h3, h4, h5, h6, p, div, span, label, li {{
-            color: #f8fafc !important; /* Slate 50 */
+            color: #f8fafc !important; 
             font-family: 'Inter', sans-serif;
         }}
         
-        /* SIDEBAR STYLING */
+        /* SIDEBAR */
         section[data-testid="stSidebar"] {{
-            background-color: rgba(15, 23, 42, 0.8); /* Slate 900 */
+            background-color: rgba(15, 23, 42, 0.8);
             border-right: 1px solid rgba(255, 255, 255, 0.1);
         }}
         
-        /* INPUT FIELDS */
-        .stTextInput > div > div > input {{
+        /* INPUTS */
+        .stTextInput > div > div > input, .stSelectbox > div > div > div {{
             background-color: rgba(30, 41, 59, 0.6);
             color: white;
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
         }}
-        .stSelectbox > div > div > div {{
-            background-color: rgba(30, 41, 59, 0.6);
-            color: white;
-        }}
-        .stMultiSelect > div > div > div {{
-            background-color: rgba(30, 41, 59, 0.6);
-            color: white;
-        }}
         
-        /* CARDS / EXPANDERS */
+        /* CARDS */
         .streamlit-expanderHeader {{
             background-color: rgba(30, 41, 59, 0.4) !important;
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 8px;
             color: white !important;
         }}
-        .streamlit-expanderContent {{
-            background-color: rgba(15, 23, 42, 0.4) !important;
-            border-bottom-left-radius: 8px;
-            border-bottom-right-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-top: none;
-        }}
         
-        /* BUTTONS */
-        button {{
-            border-radius: 8px !important;
+        /* HERO INSTRUCTION CARD */
+        .hero-card {{
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }}
+        .step-container {{
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }}
+        .step-box {{
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 15px;
+            width: 220px;
+            transition: transform 0.2s;
+        }}
+        .step-box:hover {{
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.07);
+        }}
+        .step-icon {{ font-size: 2.5rem; margin-bottom: 10px; }}
+        .step-title {{ color: white; font-weight: bold; margin-bottom: 5px; font-size: 1.1rem; }}
+        .step-desc {{ color: #94a3b8 !important; font-size: 0.9rem; }}
     </style>
     """, unsafe_allow_html=True)
 
 inject_custom_css()
 
-# --- BACKEND FUNCTIONS ---
+# --- BACKEND ---
 @st.cache_resource
 def get_chroma_client():
     if not os.path.exists(VECTOR_DB_PATH): return None
@@ -171,7 +178,6 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
         
         home, away, vid_path, date_str = game
         
-        # FILTERS
         if norm_selected_teams:
             if normalize_name(home) not in norm_selected_teams and normalize_name(away) not in norm_selected_teams:
                 continue
@@ -183,7 +189,6 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
             play_tags = meta['tags'].split(", ") if meta['tags'] else []
             if not all(tag in play_tags for tag in selected_tags): continue
 
-        # Offset Logic
         period_len = 1200 
         cursor.execute("SELECT period, clock_seconds FROM plays WHERE play_id = ?", (play_id,))
         p_row = cursor.fetchone()
@@ -207,25 +212,20 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
     conn.close()
     return parsed
 
-# --- SIDEBAR CONTENT ---
+# --- SIDEBAR ---
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
 else:
     st.sidebar.title("SKOUT 🏀")
 
 st.sidebar.markdown("### 🔎 Filters")
-
-# 1. Division
 sel_div = st.sidebar.selectbox("Division", ["All"] + list(LEAGUE_STRUCTURE.keys()), index=1)
 
-# 2. Conference
 available_conferences = []
-if sel_div != "All":  # <--- FIXED VARIABLE NAME HERE
+if sel_div != "All":
     available_conferences = list(LEAGUE_STRUCTURE[sel_div].keys())
-    
 sel_conf = st.sidebar.selectbox("Conference", ["All"] + sorted(available_conferences), index=1)
 
-# 3. Team
 available_teams = []
 if sel_conf != "All" and sel_div != "All":
     available_teams = LEAGUE_STRUCTURE[sel_div][sel_conf]
@@ -239,50 +239,56 @@ sel_years = st.sidebar.slider("Season", 2020, datetime.now().year, (2020, dateti
 # --- MAIN CONTENT ---
 st.title("SKOUT | Recruitment Engine")
 
-# CHECK DB STATUS
+# CHECK DATABASE STATUS
 db_exists = os.path.exists(DB_PATH)
 if db_exists:
     conn = sqlite3.connect(DB_PATH)
-    try:
-        game_count = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
-    except:
-        game_count = 0
+    try: game_count = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    except: game_count = 0
     conn.close()
 else:
     game_count = 0
 
-# --- GREETING / INSTRUCTIONS ---
-show_instructions = True
-is_expanded = (game_count == 0)
+# --- HERO INSTRUCTIONS (THE "UP TOP" VISUAL) ---
+if game_count == 0:
+    st.markdown("""
+    <div class="hero-card">
+        <h2 style="font-weight: 800; font-size: 2.2rem; margin-bottom: 10px;">👋 Welcome to SKOUT</h2>
+        <p style="color: #cbd5e1 !important; font-size: 1.1rem; max-width: 600px; margin: 0 auto;">
+            Your recruitment engine is online. The database is currently empty. <br>
+            Follow these three steps to initialize the system.
+        </p>
+        
+        <div class="step-container">
+            <div class="step-box">
+                <div class="step-icon">🔑</div>
+                <div class="step-title">1. Credentials</div>
+                <div class="step-desc">Go to <b>Admin Settings</b> and enter your Synergy API Key.</div>
+            </div>
+            <div class="step-box">
+                <div class="step-icon">⬇️</div>
+                <div class="step-title">2. Ingest</div>
+                <div class="step-desc">Click <b>Sync Schedule</b> and then <b>Sync Plays</b>.</div>
+            </div>
+            <div class="step-box">
+                <div class="step-icon">🧠</div>
+                <div class="step-title">3. Index</div>
+                <div class="step-desc">Click <b>Build AI Index</b> to activate semantic search.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop() # Stop rendering the search UI until setup is done
 
-if show_instructions:
-    with st.expander("ℹ️  How to use SKOUT (Instructions)", expanded=is_expanded):
-        st.markdown("""
-        ### 👋 Welcome, Coach.
-        
-        **1. Populate Your Engine:**
-        * Navigate to **Admin Settings** in the left sidebar.
-        * Enter your **Synergy API Key**.
-        * Click **Sync Schedule** -> **Sync Plays** -> **Build AI Index**.
-        
-        **2. Search the Database:**
-        * Use the **Semantic Search** bar below to describe what you are looking for (e.g., *"Late clock PnR defenses"*).
-        * Use the **Filters** on the left to narrow by Conference or Team.
-        * Use the **Tag Filter** to find specific events (Turnovers, Dunks, etc.).
-        """)
-        
-        if game_count == 0:
-            st.warning("⚠️ Database is currently empty. Please follow step 1 above.")
-
-# SEARCH INTERFACE
+# --- SEARCH INTERFACE ---
 col1, col2 = st.columns([3, 1])
 with col1:
-    search_query = st.text_input("Search Playbook", placeholder="e.g. 'Freshman turnovers', 'Pick and roll lob'")
+    search_query = st.text_input("Semantic Search", placeholder="e.g. 'Freshman turnovers', 'Pick and roll lob'")
 with col2:
     real_tags = get_unique_tags()
     selected_tags_filter = st.multiselect("Tags", real_tags, placeholder="Add tags...")
 
-# RESULTS AREA
+# --- RESULTS ---
 if search_query or selected_tags_filter:
     st.divider()
     with st.spinner("Analyzing tape..."):
@@ -299,7 +305,6 @@ if search_query or selected_tags_filter:
                     c1, c2 = st.columns([1.2, 2])
                     with c1:
                         st.markdown(f"**{play['desc']}**")
-                        # Chips
                         if play['tags']:
                             tags = play['tags'].split(", ")
                             chips = ""
