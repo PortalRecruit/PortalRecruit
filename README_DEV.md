@@ -10,7 +10,26 @@ Use Python 3.13 (available on this machine) and keep the venv under your home di
 python3.13 -m venv "$HOME/.venvs/PortalRecruit"
 source "$HOME/.venvs/PortalRecruit/bin/activate"
 python -m pip install -U pip
+```
+
+### Install dependencies
+
+Full install (includes embeddings stack, can be very large due to `torch`):
+
+```bash
 pip install -r requirements.txt
+```
+
+Lighter install (no embeddings/transformers/torch downloads):
+
+```bash
+pip install -r requirements.base.txt
+```
+
+Enable embeddings features:
+
+```bash
+pip install -r requirements.ml.txt
 ```
 
 ## Run
