@@ -40,7 +40,8 @@ st.set_page_config(
 
 # --- CUSTOM CSS ---
 def get_base64_image(image_path):
-    if not os.path.exists(image_path): return ""
+    if not os.path.exists(image_path):
+        return ""
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
@@ -128,12 +129,12 @@ def inject_custom_css():
             font-family: 'Inter', sans-serif;
         }}
         
-        section[data-testid="stSidebar"] {
+        section[data-testid="stSidebar"] {{
             background: rgba(15, 23, 42, 0.60);
             backdrop-filter: blur(18px);
             border-right: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 0 0 1px rgba(255,255,255,0.025);
-        }
+        }}
         
         .stTextInput > div > div > input, .stSelectbox > div > div > div, .stMultiSelect > div > div > div {{
             background-color: rgba(30, 41, 59, 0.6);
@@ -196,54 +197,69 @@ inject_custom_css()
 # --- BACKEND FUNCTIONS ---
 @st.cache_resource
 def get_chroma_client():
-    if not os.path.exists(VECTOR_DB_PATH): return None
-    
+    if not os.path.exists(VECTOR_DB_PATH):
+        return None
+
     # --- CLOUD DEPLOYMENT FIX: Patch SQLite ---
     # Streamlit Cloud uses an old SQLite version incompatible with Chroma.
     # We patch it with pysqlite3-binary.
     try:
-        __import__('pysqlite3')
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+        __import__("pysqlite3")
+        sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
     except ImportError:
-        pass # Not on cloud or library missing
-        
+        # Not on cloud or library missing
+        pass
+
     return chromadb.PersistentClient(path=VECTOR_DB_PATH)
 
 def get_database_connection():
     return sqlite3.connect(DB_PATH)
 
 def get_unique_tags():
-    if not os.path.exists(DB_PATH): return []
+    if not os.path.exists(DB_PATH):
+        return []
+
     conn = get_database_connection()
     try:
         rows = conn.execute("SELECT tags FROM plays WHERE tags != ''").fetchall()
-        unique_tags = set()
+        unique_tags: set[str] = set()
         for r in rows:
             tags = [t.strip() for t in r[0].split(",")]
             unique_tags.update(tags)
-        return sorted(list(unique_tags))
-    except: return []
-    finally: conn.close()
+        return sorted(unique_tags)
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
 
 def normalize_name(name):
-    if not name: return ""
-    return re.sub(r'[^a-z0-9]', '', name.lower())
+    if not name:
+        return ""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
 
 def search_plays(query, selected_tags, selected_teams, year_range, n_results=50):
     client = get_chroma_client()
-    if not client: return []
-    try: collection = client.get_collection(name="skout_plays")
-    except: return []
+    if not client:
+        return []
+
+    try:
+        collection = client.get_collection(name="skout_plays")
+    except Exception:
+        return []
 
     search_text = query if query else " ".join(selected_tags)
-    if not search_text: return []
+    if not search_text:
+        return []
 
     results = collection.query(query_texts=[search_text], n_results=n_results)
     parsed = []
     conn = get_database_connection()
     cursor = conn.cursor()
 
-    if not results['ids']: return []
+    if not results["ids"]:
+        return []
     
     norm_selected_teams = {normalize_name(t) for t in selected_teams}
 
@@ -251,7 +267,8 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
         meta = results['metadatas'][0][i]
         cursor.execute("SELECT home_team, away_team, video_path, date FROM games WHERE game_id = ?", (meta['game_id'],))
         game = cursor.fetchone()
-        if not game: continue
+        if not game:
+            continue
         
         home, away, vid_path, date_str = game
         
@@ -260,11 +277,13 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
                 continue
 
         game_year = int(date_str[:4]) if date_str else 0
-        if game_year < year_range[0] or game_year > year_range[1]: continue
+        if game_year < year_range[0] or game_year > year_range[1]:
+            continue
 
         if selected_tags:
             play_tags = meta['tags'].split(", ") if meta['tags'] else []
-            if not all(tag in play_tags for tag in selected_tags): continue
+            if not all(tag in play_tags for tag in selected_tags):
+                continue
 
         period_len = 1200 
         cursor.execute("SELECT period, clock_seconds FROM plays WHERE play_id = ?", (play_id,))
@@ -272,8 +291,10 @@ def search_plays(query, selected_tags, selected_teams, year_range, n_results=50)
         offset = 0
         if p_row:
             period, clock_sec = p_row
-            if period == 1: offset = max(0, period_len - clock_sec)
-            elif period == 2: offset = max(0, 1200 + (period_len - clock_sec))
+            if period == 1:
+                offset = max(0, period_len - clock_sec)
+            elif period == 2:
+                offset = max(0, 1200 + (period_len - clock_sec))
 
         parsed.append({
             "id": play_id,
@@ -330,9 +351,12 @@ st.title("PortalRecruit | Recruitment Engine")
 db_exists = os.path.exists(DB_PATH)
 if db_exists:
     conn = sqlite3.connect(DB_PATH)
-    try: game_count = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
-    except: game_count = 0
-    conn.close()
+    try:
+        game_count = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    except Exception:
+        game_count = 0
+    finally:
+        conn.close()
 else:
     game_count = 0
 
@@ -396,8 +420,10 @@ if search_query or selected_tags_filter:
                             chips = ""
                             for t in tags:
                                 color = "blue"
-                                if "turnover" in t: color = "red"
-                                if "made" in t or "score" in t: color = "green"
+                                if "turnover" in t:
+                                    color = "red"
+                                if "made" in t or "score" in t:
+                                    color = "green"
                                 chips += f":{color}[`{t}`] "
                             st.markdown(chips)
                     with c2:

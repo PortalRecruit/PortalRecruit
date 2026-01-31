@@ -63,8 +63,9 @@ def find_match(filename, db_cursor):
     db_cursor.execute("SELECT game_id, home_team, away_team, date FROM games")
     all_games = db_cursor.fetchall()
     
-    best_match = None
-    
+
+    # (removed unused best_match)
+
     for game in all_games:
         g_id, home, away, date = game
         

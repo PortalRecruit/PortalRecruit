@@ -125,8 +125,9 @@ class GameIngester:
         processed_game_ids = set()
         
         for team in tqdm(teams, desc="Scanning Teams", unit="team"):
-            team_id = team.get('id')
-            if not team_id: continue
+            team_id = team.get("id")
+            if not team_id:
+                continue
 
             # Pagination for games
             skip = 0
@@ -152,7 +153,8 @@ class GameIngester:
                 for game_wrapper in game_wrappers:
                     game = game_wrapper.get('data', game_wrapper) if isinstance(game_wrapper, dict) else game_wrapper
                     
-                    if not isinstance(game, dict): continue
+                    if not isinstance(game, dict):
+                        continue
                     
                     game_id = game.get('id')
                     if not game_id or game_id in processed_game_ids:

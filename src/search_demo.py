@@ -48,5 +48,6 @@ def search_plays(query, n_results=5):
 if __name__ == "__main__":
     while True:
         q = input("Enter search query (or 'q' to quit): ")
-        if q.lower() == 'q': break
+        if q.lower() == "q":
+            break
         search_plays(q)
