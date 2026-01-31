@@ -1,6 +1,6 @@
+import argparse
 import os
 import sys
-import requests
 import sqlite3
 from dotenv import load_dotenv
 
@@ -9,11 +9,12 @@ ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..", "
 load_dotenv(ENV_PATH)
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-# CONFIGURATION
-SEASON_ID = "6085b5d0e6c2413bc4ba9122" # 2021-2022 Season
-API_KEY = os.getenv("SYNERGY_API_KEY") 
+from src.ingestion.synergy_client import SynergyClient
+
+# Defaults (only used if no discovery data is available)
+DEFAULT_SEASON_ID = "6085b5d0e6c2413bc4ba9122"  # legacy guess: 2021-2022
 DB_PATH = os.path.join(os.getcwd(), "data/skout.db")
 
 def setup_db():
@@ -36,62 +37,88 @@ def setup_db():
     conn.commit()
     return conn
 
-def fetch_season_games():
-    """Fetches all games for the 2021-22 Season."""
-    if not API_KEY:
-        print("❌ Error: SYNERGY_API_KEY not found. Check your .env path.")
+def _unwrap_list_payload(payload):
+    """Synergy responses often wrap each item as {data: {...}} inside {data: [...]}"""
+    if not payload:
+        return []
+    if isinstance(payload, dict):
+        items = payload.get("data", [])
+    elif isinstance(payload, list):
+        items = payload
+    else:
         return []
 
-    url = "https://api.sportradar.com/synergy/basketball/ncaamb/games"
-    
-    headers = {
-        "x-api-key": API_KEY
-    }
-    
-    params = {
-        "seasonId": SEASON_ID,
-        "take": 1000 
-    }
-    
-    print(f"📡 Fetching schedule for Season ID: {SEASON_ID}...")
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"❌ API Error: {e}")
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            out.append(item.get("data", item))
+        else:
+            out.append(item)
+    return out
+
+
+def discover_accessible_seasons(client: SynergyClient, league_code: str = "ncaamb"):
+    seasons_payload = client.get_seasons(league_code=league_code)
+    seasons = [s for s in _unwrap_list_payload(seasons_payload) if isinstance(s, dict)]
+    return seasons
+
+
+def fetch_season_games(season_id: str, league_code: str = "ncaamb"):
+    """Fetches games for a season. If the API key is limited, surface what it *can* access."""
+    client = SynergyClient()
+
+    print(f"📡 Fetching schedule for Season ID: {season_id}...")
+    games_payload = client.get_games(league_code=league_code, season_id=season_id, team_id=None, limit=100)
+
+    # If this returned None, SynergyClient already printed details.
+    # Provide a helpful next step: list accessible seasons.
+    if not games_payload:
+        print("\nℹ️  Could not fetch games for that season with this API key.")
+        print("    Attempting to discover accessible seasons...")
+        seasons = discover_accessible_seasons(client, league_code=league_code)
+        if seasons:
+            # Print a compact summary
+            print("✅ Discovered accessible seasons:")
+            for s in seasons[:25]:
+                sid = s.get("id", "")
+                name = s.get("name", "")
+                year = s.get("year", "")
+                print(f"   - {year} {name} (seasonId={sid})")
+            if len(seasons) > 25:
+                print(f"   ... and {len(seasons) - 25} more")
+        else:
+            print("⚠️  No seasons discovered. This key may not have access to /seasons either.")
         return []
 
-    data = response.json()
     games = []
-    
-    # --- FIX: Iterate through the outer list, then UNWRAP the inner 'data' object ---
-    for item in data.get('data', []):
-        game = item.get('data', {}) # <--- This is the key fix (unwrapping)
-        
-        # Check for valid statuses (GameOver, Final, Closed)
-        status = game.get('status')
-        if status in ['GameOver', 'Final', 'Closed']: 
-            try:
-                # We use .get() safely for teams
-                home_team = game.get('homeTeam', {}).get('name', 'Unknown')
-                away_team = game.get('awayTeam', {}).get('name', 'Unknown')
+    for game in _unwrap_list_payload(games_payload):
+        if not isinstance(game, dict):
+            continue
 
-                games.append((
-                    game.get('id'),
-                    SEASON_ID,
-                    game.get('date'), 
-                    home_team,
-                    away_team, 
-                    game.get('homeScore', 0),
-                    game.get('awayScore', 0),
-                    status,
-                    None
-                ))
-            except Exception as e:
-                print(f"⚠️ Skipping malformed game record: {e}")
-                continue
-    
-    print(f"✅ Found {len(games)} valid games.")
+        status = game.get("status")
+        if status not in ["GameOver", "Final", "Closed"]:
+            continue
+
+        home_team = game.get("homeTeam", {}).get("name", "Unknown")
+        away_team = game.get("awayTeam", {}).get("name", "Unknown")
+
+        games.append(
+            (
+                game.get("id"),
+                season_id,
+                game.get("date"),
+                home_team,
+                away_team,
+                game.get("homeScore", 0),
+                game.get("awayScore", 0),
+                status,
+                None,
+            )
+        )
+
+    print(f"✅ Found {len(games)} valid games (sampled page).")
+    print("ℹ️  Note: this script currently fetches a first page/sample of games.")
+    print("    We'll upgrade it to full pagination + team-scoped crawling as part of the new pipeline UI.")
     return games
 
 def save_schedule(games):
@@ -113,6 +140,11 @@ def save_schedule(games):
     print(f"💾 Successfully cached {count} games into skout.db")
 
 if __name__ == "__main__":
-    games_list = fetch_season_games()
+    parser = argparse.ArgumentParser(description="PortalRecruit – Schedule Ingestion")
+    parser.add_argument("--season-id", type=str, default=DEFAULT_SEASON_ID)
+    parser.add_argument("--league", type=str, default="ncaamb")
+    args = parser.parse_args()
+
+    games_list = fetch_season_games(args.season_id, league_code=args.league)
     if games_list:
         save_schedule(games_list)
