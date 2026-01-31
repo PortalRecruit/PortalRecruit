@@ -29,4 +29,6 @@ jobs:
 
       - name: Pytest
         run: |
-          pytest -q
+          # If there are no tests collected, pytest exits with code 5.
+          # That's not a failure for this repo (yet).
+          pytest -q || ([ $? -eq 5 ] && echo "No tests collected (ok)")
