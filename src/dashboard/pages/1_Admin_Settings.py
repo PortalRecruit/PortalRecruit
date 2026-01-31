@@ -211,33 +211,11 @@ if report:
 
 st.divider()
 
-# --- SECTION 3: PIPELINE (LEGACY BUTTONS, TEMP) ---
-st.subheader("3. Data Pipeline (Legacy)")
-st.caption("These will be replaced by a single end-to-end pipeline button once the new selection UI is complete.")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("**Step 1: Game Schedule**")
-    st.info("Fetches games and caches them to the local SQLite DB.")
-    if st.button("Sync Schedule"):
-        with st.spinner("Fetching games..."):
-            log = run_ingestion_script("ingestion/ingest_acc_schedule.py")
-            st.text_area("Log", log, height=180)
-
-with col2:
-    st.markdown("**Step 2: Play Data**")
-    st.info("Downloads PBP events for cached games.")
-    if st.button("Sync Plays"):
-        with st.spinner("Downloading plays..."):
-            log = run_ingestion_script("ingestion/ingest_game_events.py")
-            st.text_area("Log", log, height=180)
-
-with col3:
-    st.markdown("**Step 3: AI Intelligence**")
-    st.info("Generates tags + embeddings.")
-    if st.button("Build AI Index"):
-        with st.spinner("Thinking..."):
-            log1 = run_ingestion_script("processing/apply_tags.py")
-            log2 = run_ingestion_script("processing/generate_embeddings.py")
-            st.text_area("Log", log1 + "\n" + log2, height=180)
+# --- SECTION 3: PIPELINE (LEGACY) ---
+st.subheader("3. Legacy Tools")
+st.caption(
+    "Deprecated: use **Run Pipeline** above. We’re removing these to prevent confusing failures on Streamlit Cloud."
+)
+st.info(
+    "If you need a specific legacy script for debugging, tell me which one and we’ll port it into the pipeline runner."
+)

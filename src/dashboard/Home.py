@@ -131,6 +131,13 @@ def inject_custom_css() -> None:
             overflow: hidden;
         }}
 
+        /* This app is single-page. Hide the multipage sidebar/nav completely. */
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarNav"],
+        button[data-testid="collapsedControl"] {{
+            display: none !important;
+        }}
+
     </style>
         """,
         unsafe_allow_html=True,
