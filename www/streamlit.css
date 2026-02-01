@@ -1,10 +1,57 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@300;400;500;600;700;900&display=swap');
+/* Google fallbacks (optional) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap');
+
+/* Custom local fonts (served from GitHub Pages: /www/custom_fonts) */
+@font-face {
+  font-family: "Neoteric";
+  src: url("/PortalRecruit/custom_fonts/neoteric_regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Neoteric";
+  src: url("/PortalRecruit/custom_fonts/neoteric_bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rockness";
+  src: url("/PortalRecruit/custom_fonts/Rockness.otf") format("opentype"),
+       url("/PortalRecruit/custom_fonts/Rockness.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GoBold Blocky";
+  src: url("/PortalRecruit/custom_fonts/gobold_blocky_regular_webfont.woff") format("woff"),
+       url("/PortalRecruit/custom_fonts/gobold_blocky_regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "GoBold Blocky";
+  src: url("/PortalRecruit/custom_fonts/gobold_blocky_italic_webfont.woff") format("woff"),
+       url("/PortalRecruit/custom_fonts/gobold_blocky_italic.otf") format("opentype");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
   --pr-glass-bg: rgba(15, 23, 42, 0.28);
   --pr-glass-bg-2: rgba(30, 41, 59, 0.38);
   --pr-glass-border: rgba(255, 255, 255, 0.10);
   --pr-glow: rgba(234, 88, 12, 0.16);
+
+  /* Font stacks */
+  --pr-font-body: "Neoteric", Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  --pr-font-head: "Rockness", "GoBold Blocky", "Neoteric", Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
 html, body { background: #020617 !important; }
@@ -20,13 +67,13 @@ html, body { background: #020617 !important; }
 
 h1, h2, h3, h4, h5, h6 {
   color: #f8fafc !important;
-  font-family: "Space Grotesk", Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif !important;
+  font-family: var(--pr-font-head) !important;
   letter-spacing: -0.01em;
 }
 
 p, div, span, label, li {
   color: #f8fafc !important;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif !important;
+  font-family: var(--pr-font-body) !important;
 }
 
 /* Center hero */
