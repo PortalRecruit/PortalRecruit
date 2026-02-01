@@ -111,22 +111,27 @@ h1, h2, h3, h4, h5, h6, p, div, span, label, li {{
    PortalRecruit “glassy” theme
    ----------------------------- */
 :root {{
-  --pr-glass-bg: rgba(15, 23, 42, 0.55);
-  --pr-glass-bg-2: rgba(30, 41, 59, 0.35);
+  --pr-glass-bg: rgba(15, 23, 42, 0.28);
+  --pr-glass-bg-2: rgba(30, 41, 59, 0.38);
   --pr-glass-border: rgba(255, 255, 255, 0.08);
   --pr-glow: rgba(234, 88, 12, 0.16);
 }}
 
-/* Main content as a single glass panel */
+/* Whole-page glass overlay (subtle) */
+.bg-video-overlay {{
+  /* keep existing gradient, but add a subtle frosted layer */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}}
+
+/* Remove the big "single panel" look; let content float */
 section.main > div.block-container {{
-  background: var(--pr-glass-bg);
-  border: 1px solid var(--pr-glass-border);
-  border-radius: 22px;
-  padding: 24px 28px 34px 28px;
-  box-shadow: 0 18px 60px rgba(0,0,0,0.42), 0 0 28px var(--pr-glow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  margin-top: 18px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 18px 22px 30px 22px;
+  box-shadow: none !important;
+  margin-top: 10px;
 }}
 
 /* Sub-panels (forms / status / expanders) */
