@@ -71,7 +71,24 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.01em;
 }
 
-p, div, span, label, li {
+p, div, label, li {
+  color: #f8fafc !important;
+  font-family: var(--pr-font-body) !important;
+}
+
+/* Keep Streamlit/Material icons working (avoid showing text like "double_arrow_right") */
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined,
+span.material-symbols-rounded,
+span.material-symbols-outlined {
+  font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons" !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+}
+
+/* Regular text spans (exclude icon spans) */
+span:not(.material-icons):not(.material-symbols-rounded):not(.material-symbols-outlined) {
   color: #f8fafc !important;
   font-family: var(--pr-font-body) !important;
 }
