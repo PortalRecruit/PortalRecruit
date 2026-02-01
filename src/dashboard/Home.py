@@ -27,88 +27,87 @@ st.set_page_config(
 )
 
 # Background video (hosted on GitHub Pages to avoid base64 + slow loads)
-st.markdown(
-    f"""
-<div class="bg-video-wrap">
-  <video class="bg-video" autoplay loop muted playsinline>
-    <source src="{BG_VIDEO_URL}" type="video/mp4" />
-  </video>
-  <div class="bg-video-overlay"></div>
+# IMPORTANT: avoid leading indentation in this HTML/CSS string.
+# Streamlit's markdown renderer can treat indented lines as a code block and print the CSS.
+BG_HTML = f"""<div class=\"bg-video-wrap\">
+<video class=\"bg-video\" autoplay loop muted playsinline>
+  <source src=\"{BG_VIDEO_URL}\" type=\"video/mp4\" />
+</video>
+<div class=\"bg-video-overlay\"></div>
 </div>
 <style>
-  .bg-video-wrap {{
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    z-index: 0; /* avoid negative z-index quirks */
-    pointer-events: none; /* never block clicks */
-  }}
-  .bg-video-wrap * {{ pointer-events: none; }}
+.bg-video-wrap {{
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}}
+.bg-video-wrap * {{ pointer-events: none; }}
 
-  /* Force ALL Streamlit UI layers above the background video */
-  html, body {{ background: #020617; }}
+/* Force ALL Streamlit UI layers above the background video */
+html, body {{ background: #020617; }}
 
-  /* Streamlit paints opaque backgrounds on several wrappers; make them transparent
-     so the fixed video can actually show through. */
-  [data-testid="stAppViewContainer"],
-  [data-testid="stMain"],
-  [data-testid="stHeader"],
-  [data-testid="stToolbar"],
-  .stApp, .stApp > div, .stApp main {{
-    background: transparent !important;
-    position: relative;
-    z-index: 2;
-  }}
+/* Streamlit paints opaque backgrounds on several wrappers; make them transparent
+   so the fixed video can actually show through. */
+[data-testid=\"stAppViewContainer\"],
+[data-testid=\"stMain\"],
+[data-testid=\"stHeader\"],
+[data-testid=\"stToolbar\"],
+.stApp, .stApp > div, .stApp main {{
+  background: transparent !important;
+  position: relative;
+  z-index: 2;
+}}
 
-  .bg-video {{
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    min-width: 100%;
-    min-height: 100%;
-    object-fit: cover;
-    opacity: 0.32;
-    filter: saturate(1.05) contrast(1.02) brightness(0.92) blur(3px);
-    z-index: 0;
-  }}
+.bg-video {{
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  object-fit: cover;
+  opacity: 0.32;
+  filter: saturate(1.05) contrast(1.02) brightness(0.92) blur(3px);
+  z-index: 0;
+}}
 
-  .bg-video-overlay {{
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: linear-gradient(
-      180deg,
-      rgba(2, 6, 23, 0.88) 0%,
-      rgba(2, 6, 23, 0.82) 45%,
-      rgba(2, 6, 23, 0.90) 100%
-    );
-  }}
-  .bg-video-overlay::before {{
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(closest-side, rgba(0,0,0,0) 62%, rgba(0,0,0,0.40) 100%);
-  }}
+.bg-video-overlay {{
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(2, 6, 23, 0.88) 0%,
+    rgba(2, 6, 23, 0.82) 45%,
+    rgba(2, 6, 23, 0.90) 100%
+  );
+}}
+.bg-video-overlay::before {{
+  content: \"\";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(closest-side, rgba(0,0,0,0) 62%, rgba(0,0,0,0.40) 100%);
+}}
 
-  /* Hide sidebar + multipage nav completely */
-  section[data-testid="stSidebar"],
-  div[data-testid="stSidebarNav"],
-  button[data-testid="collapsedControl"] {{
-    display: none !important;
-  }}
+/* Hide sidebar + multipage nav completely */
+section[data-testid=\"stSidebar\"],
+div[data-testid=\"stSidebarNav\"],
+button[data-testid=\"collapsedControl\"] {{
+  display: none !important;
+}}
 
-  h1, h2, h3, h4, h5, h6, p, div, span, label, li {{
-    color: #f8fafc !important;
-    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  }}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+h1, h2, h3, h4, h5, h6, p, div, span, label, li {{
+  color: #f8fafc !important;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}}
+</style>"""
+
+st.markdown(BG_HTML, unsafe_allow_html=True)
 
 # Minimal top brand bar
 st.markdown(
