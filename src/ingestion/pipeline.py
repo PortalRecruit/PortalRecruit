@@ -131,9 +131,12 @@ def upsert_players(conn, team_id: str, players: list[dict]) -> int:
                 return val
             try:
                 import json
-                return json.dumps(val, ensure_ascii=False)
+                return json.dumps(val, ensure_ascii=False, default=str)
             except Exception:
-                return str(val)
+                try:
+                    return str(val)
+                except Exception:
+                    return None
 
         rows.append(
             (
