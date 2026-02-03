@@ -134,9 +134,11 @@ elif st.session_state.app_mode == "Search":
 
     if query:
         # --- QUERY INTENTS (coach-speak -> filters) ---
-        from src.search.coach_dictionary import infer_intents_verbose, INTENTS  # noqa: E402
-
-        intents = infer_intents_verbose(query)
+        try:
+            from src.search.coach_dictionary import infer_intents_verbose, INTENTS  # noqa: E402
+            intents = infer_intents_verbose(query)
+        except Exception:
+            intents = {}
         exclude_tags = set()
         role_hints = set()
         explain = []
