@@ -1,6 +1,7 @@
 import sys
 import streamlit as st
 from pathlib import Path
+import zipfile
 
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
@@ -21,10 +22,36 @@ st.set_page_config(
 inject_background()
 
 # --- 3. HELPER FUNCTIONS ---
+def _restore_vector_db_if_needed() -> bool:
+    """Rebuild vector_db from split zip parts if missing."""
+    db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
+    if db_path.exists():
+        return True
+
+    parts = sorted((REPO_ROOT / "data").glob("vector_db.zip.part*"))
+    if not parts:
+        return False
+
+    zip_path = REPO_ROOT / "data" / "vector_db.zip"
+    if not zip_path.exists():
+        with open(zip_path, "wb") as out:
+            for part in parts:
+                out.write(part.read_bytes())
+
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(REPO_ROOT / "data")
+    except Exception:
+        return False
+
+    return db_path.exists()
+
+
 def check_ingestion_status():
     """
     Checks if the vector database exists.
     """
+    _restore_vector_db_if_needed()
     db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
     return db_path.exists()
 
