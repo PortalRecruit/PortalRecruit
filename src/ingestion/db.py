@@ -125,7 +125,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             zone_rate REAL,
             hard_double_rate REAL,
             assist_rate REAL,
-            turnover_rate REAL
+            turnover_rate REAL,
+            resilience_index REAL,
+            trailing_make_rate REAL,
+            short_clock_make_rate REAL,
+            eob_make_rate REAL,
+            press_success_rate REAL,
+            zone_success_rate REAL,
+            hard_double_success_rate REAL,
+            clutch_make_rate REAL
         )
         """
     )
@@ -140,6 +148,14 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         ("hard_double_rate", "REAL"),
         ("assist_rate", "REAL"),
         ("turnover_rate", "REAL"),
+        ("resilience_index", "REAL"),
+        ("trailing_make_rate", "REAL"),
+        ("short_clock_make_rate", "REAL"),
+        ("eob_make_rate", "REAL"),
+        ("press_success_rate", "REAL"),
+        ("zone_success_rate", "REAL"),
+        ("hard_double_success_rate", "REAL"),
+        ("clutch_make_rate", "REAL"),
     ]
     for col, ctype in trait_cols:
         try:

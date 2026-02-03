@@ -333,6 +333,12 @@ def run_pipeline(plan: PipelinePlan, api_key: str, progress_cb=None) -> dict:
         except Exception:
             pass
 
+        try:
+            from src.processing.derive_resilience import build_resilience_metrics
+            build_resilience_metrics()
+        except Exception:
+            pass
+
     conn.close()
 
     return {

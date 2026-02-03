@@ -207,6 +207,12 @@ def main() -> int:
     except Exception as e:
         print(f"⚠️ Leadership build failed: {e}")
 
+    try:
+        from src.processing.derive_resilience import build_resilience_metrics
+        build_resilience_metrics()
+    except Exception as e:
+        print(f"⚠️ Resilience build failed: {e}")
+
     # Always regenerate embeddings to reflect any new plays
     try:
         from src.processing.generate_embeddings import generate_embeddings

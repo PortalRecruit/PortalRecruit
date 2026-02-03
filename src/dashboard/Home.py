@@ -151,6 +151,7 @@ elif st.session_state.app_mode == "Search":
         explain = []
         matched_phrases = []
         leadership_intent = "leadership" in intents
+        resilience_intent = "resilience" in intents
 
         for hit, phrase in intents.values():
             intent = hit.intent
@@ -234,7 +235,7 @@ elif st.session_state.app_mode == "Search":
                     f"""
                     SELECT player_id, dog_index, menace_index, unselfish_index,
                            toughness_index, rim_pressure_index, shot_making_index, size_index,
-                           leadership_index
+                           leadership_index, resilience_index
                     FROM player_traits
                     WHERE player_id IN ({ph2})
                     """,
@@ -250,6 +251,7 @@ elif st.session_state.app_mode == "Search":
                         "shot": r[6],
                         "size": r[7],
                         "leadership": r[8],
+                        "resilience": r[9],
                     }
                     for r in cur.fetchall()
                 }
@@ -355,6 +357,9 @@ elif st.session_state.app_mode == "Search":
                 if leadership_intent and t.get("leadership"):
                     score += t.get("leadership") * 15
 
+                if resilience_intent and t.get("resilience"):
+                    score += t.get("resilience") * 12
+
                 if "turnover" in play_tags:
                     score -= 8
 
@@ -370,6 +375,7 @@ elif st.session_state.app_mode == "Search":
                     "shot": ("Shot Making", shot_index),
                     "size": ("Size", t.get("size")),
                     "leadership": ("Leadership", t.get("leadership")),
+                    "resilience": ("Resilience", t.get("resilience")),
                 }
                 strengths = []
                 weaknesses = []

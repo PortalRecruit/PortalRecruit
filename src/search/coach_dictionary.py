@@ -61,6 +61,11 @@ INTENTS: Dict[str, IntentBoost] = {
         tags={"assist", "deflection", "charge_taken", "loose_ball"},
         exclude_tags={"turnover", "non_possession", "ft"},
     ),
+    "resilience": IntentBoost(
+        traits={"tough": 25, "dog": 20},
+        tags={"drive", "rim_pressure"},
+        exclude_tags={"non_possession"},
+    ),
     "size_measurables": IntentBoost(
         traits={},
         tags=set(),
@@ -343,6 +348,21 @@ PHRASES: Dict[str, List[str]] = {
         "franchise",
         "star",
     ],
+    "resilience": [
+        "resilience",
+        "resilient",
+        "bounce back",
+        "bounce-back",
+        "overcomes adversity",
+        "overcome adversity",
+        "perseverance",
+        "persevere",
+        "adversity",
+        "tough-minded",
+        "short memory",
+        "next play",
+        "next-play",
+    ],
     "size_measurables": [
         "positional size",
         "length",
@@ -417,6 +437,8 @@ WEIGHTED_PHRASES: Dict[str, List[Tuple[str, float]]] = {
     "character_stability": [(p, 1.0) for p in PHRASES["character_stability"]],
     "leadership": [(p, 1.0) for p in PHRASES["leadership"]]
     + [("leader", 1.0), ("vocal", 0.6), ("captain", 0.6)],
+    "resilience": [(p, 1.0) for p in PHRASES["resilience"]]
+    + [("bounce back", 0.8), ("next play", 0.8)],
     "size_measurables": [(p, 1.0) for p in PHRASES["size_measurables"]]
     + [("long", 0.6), ("big framed", 0.6)],
     "negative_filters": [(p, 1.0) for p in PHRASES["negative_filters"]],
