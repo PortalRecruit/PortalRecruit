@@ -76,9 +76,13 @@ def build_player_traits():
     rows = cur.fetchall()
 
     # Pull size data if available
-    cur.execute("SELECT player_id, height_in, weight_lb FROM players")
-    size_rows = cur.fetchall()
-    size_map = {r[0]: (r[1], r[2]) for r in size_rows}
+    size_map = {}
+    try:
+        cur.execute("SELECT player_id, height_in, weight_lb FROM players")
+        size_rows = cur.fetchall()
+        size_map = {r[0]: (r[1], r[2]) for r in size_rows}
+    except Exception:
+        size_map = {}
 
     # Aggregate counts in Python (simple + fast enough for now)
     agg = {}

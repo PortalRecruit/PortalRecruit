@@ -107,9 +107,22 @@ elif st.session_state.app_mode == "Search":
 
     query = st.chat_input("Describe the player you are looking for (e.g., 'A downhill guard who can guard')...")
 
+    # Autocomplete suggestions
+    if query is None or query == "":
+        from src.search.autocomplete import suggest  # noqa: E402
+        sample = st.text_input("Try a coach-speak search:", "")
+        if sample:
+            suggestions = suggest(sample)
+            if suggestions:
+                st.caption("Suggestions:")
+                st.write(", ".join(suggestions))
+        # If user typed into the sample box, use it as query
+        if sample:
+            query = sample
+
     if query:
         # --- QUERY INTENTS (coach-speak -> filters) ---
-        from src.search.coach_dictionary import infer_intents  # noqa: E402
+        from src.search.coach_dictionary import infer_intents, INTENTS  # noqa: E402
 
         intents = infer_intents(query)
         exclude_tags = set()
