@@ -19,7 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.ingestion.db import connect_db, ensure_schema
+from src.ingestion.db import ensure_schema
+import sqlite3
 from src.ingestion.pipeline import (
     _unwrap_list_payload,
     iter_games,
@@ -58,7 +59,8 @@ def main() -> int:
         print("❌ Unable to determine any season_id from API.")
         return 1
 
-    conn = connect_db()
+    db_path = root / "data" / "skout.db"
+    conn = sqlite3.connect(db_path)
     ensure_schema(conn)
     cur = conn.cursor()
 
