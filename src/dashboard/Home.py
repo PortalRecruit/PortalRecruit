@@ -116,15 +116,21 @@ elif st.session_state.app_mode == "Search":
 
     if query:
         # --- QUERY INTENTS (coach-speak -> filters) ---
-        from src.search.coach_dictionary import infer_intents, INTENTS  # noqa: E402
+        from src.search.coach_dictionary import infer_intents_verbose, INTENTS  # noqa: E402
 
-        intents = infer_intents(query)
+        intents = infer_intents_verbose(query)
         exclude_tags = set()
         role_hints = set()
-        for hit in intents.values():
+        explain = []
+        matched_phrases = []
+
+        for hit, phrase in intents.values():
             intent = hit.intent
             w = hit.weight
             role_hints |= hit.role_hints
+            matched_phrases.append(phrase)
+            explain.append(f"Matched '{phrase}' → {list(intent.traits.keys())}")
+
             min_dog = max(min_dog, int(intent.traits.get("dog", 0) * w))
             min_menace = max(min_menace, int(intent.traits.get("menace", 0) * w))
             min_unselfish = max(min_unselfish, int(intent.traits.get("unselfish", 0) * w))
@@ -146,6 +152,8 @@ elif st.session_state.app_mode == "Search":
             tag_filter = list(set(tag_filter + ["rim_protection", "post_up"]))
 
         st.write(f"Searching for: **{query}**")
+        if explain:
+            st.caption("Why these results: " + " | ".join(explain))
 
         # --- VECTOR SEARCH ---
         import chromadb
@@ -161,8 +169,13 @@ elif st.session_state.app_mode == "Search":
             st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
             st.stop()
 
+        # Query expansion: add matched phrases to help retrieval
+        expanded_query = query
+        if matched_phrases:
+            expanded_query = query + " | " + " | ".join(matched_phrases)
+
         results = collection.query(
-            query_texts=[query],
+            query_texts=[expanded_query],
             n_results=n_results
         )
 
@@ -265,6 +278,20 @@ elif st.session_state.app_mode == "Search":
                 if tag_filter and not set(tag_filter).issubset(set(play_tags)):
                     continue
 
+                # Rerank score: trait alignment + tag matches
+                score = 0
+                for key, weight in [
+                    ("dog", 0.5),
+                    ("menace", 0.7),
+                    ("unselfish", 0.6),
+                    ("tough", 0.6),
+                    ("rim", 0.7),
+                    ("shot", 0.7),
+                ]:
+                    val = t.get(key) or 0
+                    score += val * weight
+                score += len(set(play_tags).intersection(set(tag_filter))) * 10
+
                 home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
                 rows.append({
                     "Matchup": f"{home} vs {away}",
@@ -279,14 +306,17 @@ elif st.session_state.app_mode == "Search":
                     "Tags": ", ".join(play_tags),
                     "Play": desc,
                     "Video": video or "-",
+                    "Score": round(score, 2),
                 })
+
+            rows.sort(key=lambda r: r.get("Score", 0), reverse=True)
 
             if rows:
                 st.markdown("### Results")
                 for r in rows:
                     with st.container():
                         st.markdown(f"**{r['Player']}** — {r['Matchup']} @ {r['Clock']}")
-                        st.caption(f"Tags: {r['Tags']}")
+                        st.caption(f"Tags: {r['Tags']} | Score: {r.get('Score', 0)}")
                         st.write(r["Play"])
                         if r.get("Video") and r["Video"] != "-":
                             try:

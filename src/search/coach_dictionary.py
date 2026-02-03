@@ -412,3 +412,22 @@ def infer_intents(query: str) -> Dict[str, IntentHit]:
                 break
 
     return hits
+
+
+def infer_intents_verbose(query: str) -> Dict[str, tuple[IntentHit, str]]:
+    """Return intent hits with the matched phrase for explainability."""
+    q = (query or "").lower()
+    hits: Dict[str, tuple[IntentHit, str]] = {}
+
+    role_hints: Set[str] = set()
+    for role, phrases in ROLE_PHRASES.items():
+        if any(p in q for p in phrases):
+            role_hints.add(role)
+
+    for bucket, phrases in WEIGHTED_PHRASES.items():
+        for p, w in phrases:
+            if p in q:
+                hit = IntentHit(intent=INTENTS[bucket], weight=w, role_hints=role_hints)
+                hits[bucket] = (hit, p)
+                break
+    return hits

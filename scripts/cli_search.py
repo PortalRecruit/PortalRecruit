@@ -17,6 +17,7 @@ def main():
     p.add_argument("query", nargs="?")
     p.add_argument("--n", type=int, default=15)
     p.add_argument("--suggest", action="store_true", help="show autocomplete suggestions for the query")
+    p.add_argument("--explain", action="store_true", help="show matched intent phrases")
     p.add_argument("--min_dog", type=float, default=0)
     p.add_argument("--min_menace", type=float, default=0)
     p.add_argument("--min_unselfish", type=float, default=0)
@@ -35,9 +36,20 @@ def main():
         print("Suggestions:", ", ".join(suggest_rich(args.query, limit=25)))
         return
 
+    if args.explain:
+        from src.search.coach_dictionary import infer_intents_verbose
+        intents = infer_intents_verbose(args.query)
+        print("Matched:", ", ".join([p for _, p in intents.values()]))
+
+    # Expand query with matched phrases
+    from src.search.coach_dictionary import infer_intents_verbose
+    intents = infer_intents_verbose(args.query)
+    matched = [p for _, p in intents.values()]
+    expanded_query = args.query + (" | " + " | ".join(matched) if matched else "")
+
     client = chromadb.PersistentClient(path=str(VECTOR_DB))
     collection = client.get_collection(name="skout_plays")
-    results = collection.query(query_texts=[args.query], n_results=args.n)
+    results = collection.query(query_texts=[expanded_query], n_results=args.n)
 
     play_ids = results.get("ids", [[]])[0]
     if not play_ids:
@@ -93,11 +105,16 @@ def main():
         if args.tags and not set(args.tags).issubset(set(play_tags)):
             continue
 
+        score = (t.get("menace",0)*0.7 + t.get("rim",0)*0.7 + t.get("shot",0)*0.7 +
+                 t.get("unselfish",0)*0.6 + t.get("dog",0)*0.5 + t.get("tough",0)*0.6 +
+                 len(set(play_tags).intersection(set(args.tags))) * 10)
+
         home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
         print(f"{home} vs {away} @ {clock}")
         print(f"  Player: {player_name}")
         print(f"  Traits: {t}")
         print(f"  Tags: {play_tags}")
+        print(f"  Score: {score:.2f}")
         print(f"  Play: {desc}")
         print(f"  Video: {video}")
         print("-"*60)
