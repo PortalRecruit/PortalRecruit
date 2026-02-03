@@ -14,8 +14,9 @@ VECTOR_DB = REPO_ROOT / "data" / "vector_db"
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("query")
+    p.add_argument("query", nargs="?")
     p.add_argument("--n", type=int, default=15)
+    p.add_argument("--suggest", action="store_true", help="show autocomplete suggestions for the query")
     p.add_argument("--min_dog", type=float, default=0)
     p.add_argument("--min_menace", type=float, default=0)
     p.add_argument("--min_unselfish", type=float, default=0)
@@ -24,6 +25,15 @@ def main():
     p.add_argument("--min_shot", type=float, default=0)
     p.add_argument("--tags", nargs="*", default=[])
     args = p.parse_args()
+
+    if not args.query:
+        print("Provide a query, e.g. ./scripts/cli_search.py \"downhill guard\"")
+        return
+
+    if args.suggest:
+        from src.search.autocomplete import suggest
+        print("Suggestions:", ", ".join(suggest(args.query)))
+        return
 
     client = chromadb.PersistentClient(path=str(VECTOR_DB))
     collection = client.get_collection(name="skout_plays")
