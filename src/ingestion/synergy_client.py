@@ -22,8 +22,8 @@ class SynergyClient:
         self.last_status_code: int | None = None
         self.last_error: str | None = None
 
-    def _get(self, endpoint, params=None, retries=6):
-        """Executes a GET request with strict rate-limit handling.
+    def _get(self, endpoint, params=None, retries=8):
+        """Executes a GET request with adaptive rate-limit handling.
 
         Returns:
             Parsed JSON (dict/list) on success, else None.
@@ -37,14 +37,19 @@ class SynergyClient:
         self.last_status_code = None
         self.last_error = None
 
-        # Simple global throttle (min delay between requests)
-        min_interval_s = 1.0
-        now = time.time()
-        last = getattr(self, "_last_request_ts", 0.0)
-        if now - last < min_interval_s:
-            time.sleep(min_interval_s - (now - last))
+        # Adaptive throttle: increases on 429, slowly decreases on success
+        if not hasattr(self, "_min_interval_s"):
+            self._min_interval_s = 1.5
+        if not hasattr(self, "_last_request_ts"):
+            self._last_request_ts = 0.0
 
         for attempt in range(retries):
+            # Global throttle between requests
+            now = time.time()
+            wait_needed = self._min_interval_s - (now - self._last_request_ts)
+            if wait_needed > 0:
+                time.sleep(wait_needed)
+
             try:
                 response = requests.get(url, headers=self.headers, params=params, timeout=30)
                 self._last_request_ts = time.time()
@@ -58,19 +63,24 @@ class SynergyClient:
                         wait_time = int(retry_after)
                     else:
                         # exponential backoff + jitter
-                        wait_time = min(60, (2 ** attempt) * 2) + (0.5 * attempt)
-                    print(f"      ⚠️ Rate limit hit (429). Pausing for {wait_time:.1f}s...")
+                        wait_time = min(90, (2 ** attempt) * 3) + (0.7 * attempt)
+                    # Increase baseline throttle after a 429
+                    self._min_interval_s = min(8.0, self._min_interval_s + 0.75)
+                    print(f"      ⚠️ Rate limit hit (429). Pausing for {wait_time:.1f}s... (min_interval={self._min_interval_s:.2f}s)")
                     time.sleep(wait_time)
                     continue
 
                 # 2. Handle Server Errors (5xx)
                 if response.status_code >= 500:
-                    wait_time = min(30, 2 + attempt * 2)
+                    wait_time = min(45, 3 + attempt * 3)
                     print(f"      ⚠️ Server Error ({response.status_code}). Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                     continue
 
                 response.raise_for_status()
+
+                # Success: slowly relax throttle
+                self._min_interval_s = max(0.8, self._min_interval_s * 0.95)
                 return response.json()
 
             except requests.HTTPError as e:
