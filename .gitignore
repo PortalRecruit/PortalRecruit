@@ -1,19 +1,24 @@
-# Ignore data and secrets
-data/
-*.env
+# Local folders / artifacts
+Baseline
+Defense
+Dribble
+Go
+Left
+Lineup
+Miss
+Non
+P
+Post-Up
+Right
+To
+Turnover
 
 # Python
 __pycache__/
-*.py[cod]
-*.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-venv/
+*.pyc
+.env
 .venv/
 
-# OS
-.DS_Store
-
-# Project
-emails/
+# Data
+/data/skout.db
+/data/vector_db/

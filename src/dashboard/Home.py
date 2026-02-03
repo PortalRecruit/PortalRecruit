@@ -102,7 +102,11 @@ elif st.session_state.app_mode == "Search":
         DB_PATH = REPO_ROOT / "data" / "skout.db"
 
         client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
-        collection = client.get_collection(name="skout_plays")
+        try:
+            collection = client.get_collection(name="skout_plays")
+        except Exception:
+            st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
+            st.stop()
 
         results = collection.query(
             query_texts=[query],
