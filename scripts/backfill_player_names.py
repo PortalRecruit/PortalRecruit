@@ -22,14 +22,17 @@ def main():
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
 
-    cur.execute("SELECT play_id, description FROM plays WHERE (player_name IS NULL OR player_name = '')")
+    cur.execute("SELECT play_id, description, player_name FROM plays")
     rows = cur.fetchall()
     print(f"Backfilling {len(rows)} plays...")
 
     updated = 0
-    for play_id, desc in rows:
+    for play_id, desc, existing_name in rows:
         name = extract_name(desc)
         if not name:
+            continue
+        # If existing name already clean, skip
+        if existing_name and existing_name.strip() == name:
             continue
         pid = make_id(name)
         cur.execute(

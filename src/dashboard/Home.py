@@ -88,6 +88,11 @@ elif st.session_state.app_mode == "Search":
     # Filters
     min_dog = st.sidebar.slider("Min Dog Index", 0, 100, 0)
     n_results = st.sidebar.slider("Number of Results", 5, 50, 15)
+    tag_filter = st.sidebar.multiselect(
+        "Required Tags",
+        ["drive", "rim_pressure", "pnr", "iso", "post_up", "handoff", "pull_up", "3pt", "jumpshot", "dunk", "layup", "steal", "block", "charge_taken", "loose_ball", "deflection"],
+        default=[]
+    )
 
     query = st.chat_input("Describe the player you are looking for (e.g., 'A high-motor rim protector who can switch on guards')...")
 
@@ -164,19 +169,26 @@ elif st.session_state.app_mode == "Search":
 
             conn.close()
 
-            # Build display rows (filter by dog index)
+            # Build display rows (filter by dog index + tags)
+            from src.processing.play_tagger import tag_play  # noqa: E402
+
             rows = []
             for pid, desc, gid, clock, player_id, player_name in play_rows:
                 dog_index = traits.get(player_id)
                 if dog_index is not None and dog_index < min_dog:
                     continue
 
+                play_tags = tag_play(desc)
+                if tag_filter and not set(tag_filter).issubset(set(play_tags)):
+                    continue
+
                 home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
                 rows.append({
                     "Matchup": f"{home} vs {away}",
                     "Clock": clock,
-                    "Player": player_name or "Unknown",
+                    "Player": (player_name or "Unknown"),
                     "Dog Index": dog_index,
+                    "Tags": ", ".join(play_tags),
                     "Play": desc,
                     "Video": video or "-",
                 })

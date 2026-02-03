@@ -6,7 +6,7 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
     desc = (description or "").lower()
 
     # --- OFFENSIVE ACTIONS ---
-    if "screen" in desc or "pick" in desc:
+    if "screen" in desc or "pick" in desc or "p&r" in desc:
         tags.add("pnr")  # Pick and Roll
     if "isolation" in desc or "iso" in desc:
         tags.add("iso")
@@ -14,10 +14,14 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
         tags.add("handoff")
     if "post" in desc:
         tags.add("post_up")
-    if "drive" in desc:
+    if "drive" in desc or "to basket" in desc or "to the basket" in desc:
         tags.add("drive")
     if "cut" in desc:
         tags.add("cut")
+    if "at basket" in desc or "at the basket" in desc or "rim" in desc:
+        tags.add("rim_pressure")
+    if "pull up" in desc or "pull-up" in desc:
+        tags.add("pull_up")
 
     # --- SHOT TYPES ---
     if "3pt" in desc or "3-pt" in desc or "three" in desc:
