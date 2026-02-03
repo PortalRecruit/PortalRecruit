@@ -19,7 +19,7 @@ def generate_embeddings():
     # Fetch Data
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT play_id, description, tags, game_id, clock_display FROM plays")
+    cursor.execute("SELECT play_id, description, tags, game_id, clock_display, player_id, player_name FROM plays")
     rows = cursor.fetchall()
     conn.close()
 
@@ -36,7 +36,14 @@ def generate_embeddings():
         documents = [f"{r[1]} [Tags: {r[2]}]" for r in batch]
         
         metadatas = [
-            {"game_id": r[3], "clock": r[4], "tags": r[2], "original_desc": r[1]} 
+            {
+                "game_id": r[3],
+                "clock": r[4],
+                "tags": r[2],
+                "original_desc": r[1],
+                "player_id": r[5],
+                "player_name": r[6],
+            }
             for r in batch
         ]
 

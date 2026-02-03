@@ -23,11 +23,9 @@ inject_background()
 # --- 3. HELPER FUNCTIONS ---
 def check_ingestion_status():
     """
-    Checks if the database exists. 
-    ADJUST THE PATH below to match where your ingestion script saves the database 
-    (e.g., 'chroma_db' or 'data/vectors').
+    Checks if the vector database exists.
     """
-    db_path = REPO_ROOT / "chroma_db" # <--- VERIFY THIS PATH
+    db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
     return db_path.exists()
 
 def render_header():
@@ -86,16 +84,100 @@ elif st.session_state.app_mode == "Search":
     # For now, I'll place the logic block here.
     
     st.markdown("### 🔍 Semantic Player Search")
-    
+
+    # Filters
+    min_dog = st.sidebar.slider("Min Dog Index", 0, 100, 0)
+    n_results = st.sidebar.slider("Number of Results", 5, 50, 15)
+
     query = st.chat_input("Describe the player you are looking for (e.g., 'A high-motor rim protector who can switch on guards')...")
-    
+
     if query:
         st.write(f"Searching for: **{query}**")
-        
-        # --- CONNECT TO YOUR SEARCH ENGINE HERE ---
-        # Example:
-        # from src.engine import search
-        # results = search.query(query)
-        # st.dataframe(results)
-        
-        st.success("Search logic goes here! (Connect your backend in Home.py lines 85+)")
+
+        # --- VECTOR SEARCH ---
+        import chromadb
+        import sqlite3
+
+        VECTOR_DB_PATH = REPO_ROOT / "data" / "vector_db"
+        DB_PATH = REPO_ROOT / "data" / "skout.db"
+
+        client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
+        collection = client.get_collection(name="skout_plays")
+
+        results = collection.query(
+            query_texts=[query],
+            n_results=n_results
+        )
+
+        play_ids = results.get("ids", [[]])[0]
+        if not play_ids:
+            st.warning("No results found.")
+        else:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+
+            # Pull plays
+            placeholders = ",".join(["?"] * len(play_ids))
+            cur.execute(
+                f"""
+                SELECT play_id, description, game_id, clock_display, player_id, player_name
+                FROM plays
+                WHERE play_id IN ({placeholders})
+                """,
+                play_ids,
+            )
+            play_rows = cur.fetchall()
+
+            # Pull traits
+            player_ids = [r[4] for r in play_rows if r[4]]
+            traits = {}
+            if player_ids:
+                ph2 = ",".join(["?"] * len(set(player_ids)))
+                cur.execute(
+                    f"""
+                    SELECT player_id, dog_index
+                    FROM player_traits
+                    WHERE player_id IN ({ph2})
+                    """,
+                    list(set(player_ids)),
+                )
+                traits = {r[0]: r[1] for r in cur.fetchall()}
+
+            # Pull game matchup
+            game_ids = list({r[2] for r in play_rows})
+            matchups = {}
+            if game_ids:
+                ph3 = ",".join(["?"] * len(game_ids))
+                cur.execute(
+                    f"""
+                    SELECT game_id, home_team, away_team, video_path
+                    FROM games
+                    WHERE game_id IN ({ph3})
+                    """,
+                    game_ids,
+                )
+                matchups = {r[0]: (r[1], r[2], r[3]) for r in cur.fetchall()}
+
+            conn.close()
+
+            # Build display rows (filter by dog index)
+            rows = []
+            for pid, desc, gid, clock, player_id, player_name in play_rows:
+                dog_index = traits.get(player_id)
+                if dog_index is not None and dog_index < min_dog:
+                    continue
+
+                home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
+                rows.append({
+                    "Matchup": f"{home} vs {away}",
+                    "Clock": clock,
+                    "Player": player_name or "Unknown",
+                    "Dog Index": dog_index,
+                    "Play": desc,
+                    "Video": video or "-",
+                })
+
+            if rows:
+                st.dataframe(rows, use_container_width=True)
+            else:
+                st.info("No results after filters.")

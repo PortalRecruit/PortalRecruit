@@ -47,10 +47,24 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             clock_display TEXT,
             description TEXT,
             team_id TEXT,
+            player_id TEXT,
+            player_name TEXT,
             x_loc INTEGER,
             y_loc INTEGER,
             tags TEXT,
             FOREIGN KEY(game_id) REFERENCES games(game_id)
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS player_traits (
+            player_id TEXT PRIMARY KEY,
+            player_name TEXT,
+            dog_events INTEGER,
+            total_events INTEGER,
+            dog_index REAL
         )
         """
     )

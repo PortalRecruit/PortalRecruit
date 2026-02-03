@@ -25,6 +25,8 @@ def setup_db():
             clock_display TEXT,
             description TEXT,
             team_id TEXT,
+            player_id TEXT,
+            player_name TEXT,
             x_loc INTEGER,
             y_loc INTEGER,
             tags TEXT, 
@@ -85,6 +87,24 @@ def process_events(events, game_id):
         # Clock handling
         raw_clock = evt.get('clock', 0)
         clock_sec = raw_clock if isinstance(raw_clock, int) else 0
+
+        # --- PLAYER EXTRACTION ---
+        # Synergy usually puts this in 'person' or 'player' object
+        # We look for a person object with {id, nameFirst, nameLast}
+        player_id = None
+        player_name = None
+        
+        # Try 'person' key (standard)
+        person = evt.get('person') or evt.get('player')
+        if person:
+            player_id = person.get('id')
+            # Construct name: "J. Smith"
+            f = person.get('nameFirst', '')
+            l = person.get('nameLast', '')
+            if f and l:
+                player_name = f"{f} {l}"
+            elif l:
+                player_name = l
         
         parsed_plays.append((
             evt.get('id'),
@@ -94,6 +114,8 @@ def process_events(events, game_id):
             str(raw_clock),
             desc_text,
             evt.get('offense', {}).get('id'),
+            player_id,
+            player_name,
             evt.get('shotX'),
             evt.get('shotY'),
             "" 
@@ -118,8 +140,8 @@ def ingest_events():
             rows = process_events(events, g_id)
             cursor.executemany('''
                 INSERT OR REPLACE INTO plays 
-                (play_id, game_id, period, clock_seconds, clock_display, description, team_id, x_loc, y_loc, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (play_id, game_id, period, clock_seconds, clock_display, description, team_id, player_id, player_name, x_loc, y_loc, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', rows)
             total_new_plays += len(rows)
             conn.commit()

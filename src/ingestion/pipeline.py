@@ -136,6 +136,15 @@ def upsert_plays(conn, game_id: str, events: list[dict]) -> int:
         ss = max(0, clock_sec) % 60
         clock_display = f"{mm}:{ss:02d}"
 
+        person = evt.get("person") or evt.get("player")
+        player_id = None
+        player_name = None
+        if person:
+            player_id = person.get("id")
+            first = person.get("nameFirst") or ""
+            last = person.get("nameLast") or ""
+            player_name = f"{first} {last}".strip() or person.get("name")
+
         rows.append(
             (
                 evt.get("id"),
@@ -145,6 +154,8 @@ def upsert_plays(conn, game_id: str, events: list[dict]) -> int:
                 clock_display,
                 desc_text,
                 (evt.get("offense") or {}).get("id"),
+                player_id,
+                player_name,
                 evt.get("shotX"),
                 evt.get("shotY"),
                 "",
@@ -157,8 +168,8 @@ def upsert_plays(conn, game_id: str, events: list[dict]) -> int:
     cur.executemany(
         """
         INSERT OR REPLACE INTO plays
-        (play_id, game_id, period, clock_seconds, clock_display, description, team_id, x_loc, y_loc, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (play_id, game_id, period, clock_seconds, clock_display, description, team_id, player_id, player_name, x_loc, y_loc, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
@@ -216,6 +227,14 @@ def run_pipeline(plan: PipelinePlan, api_key: str, progress_cb=None) -> dict:
             inserted_plays += upsert_plays(conn, gid, events)
 
         tick("events:done", inserted_plays=inserted_plays)
+
+    # 3) Derived Traits (optional)
+    if inserted_plays > 0:
+        try:
+            from src.processing.derive_player_traits import build_player_traits
+            build_player_traits()
+        except Exception:
+            pass
 
     conn.close()
 

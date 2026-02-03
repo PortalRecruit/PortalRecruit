@@ -43,6 +43,7 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
         tags.add("turnover")
         if "steal" in desc:
             tags.add("live_ball_turnover")
+            tags.add("steal")
             
     if "rebound" in desc:
         tags.add("rebound")
@@ -53,6 +54,17 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
             
     if "foul" in desc:
         tags.add("foul")
+        if "charge" in desc:
+            tags.add("charge_taken")
+
+    # --- DEFENSIVE EVENTS ---
+    if "block" in desc:
+        tags.add("block")
+        tags.add("rim_protection")
+    if "deflection" in desc:
+        tags.add("deflection")
+    if "loose ball" in desc:
+        tags.add("loose_ball")
 
     # --- TRANSITION / CONTEXT ---
     if "fast break" in desc or "transition" in desc:
