@@ -24,7 +24,7 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
         tags.add("pull_up")
 
     # --- SHOT TYPES ---
-    if "3pt" in desc or "3-pt" in desc or "three" in desc:
+    if "3pt" in desc or "3-pt" in desc or "three" in desc or "make 3" in desc or "miss 3" in desc:
         tags.add("3pt")
         tags.add("jumpshot")
     elif "dunk" in desc:
@@ -37,14 +37,24 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
         tags.add("jumpshot")
 
     # --- OUTCOMES ---
-    if "made" in desc:
+    if "made" in desc or "make" in desc:
         tags.add("made")
         tags.add("score")
-    elif "missed" in desc:
+    elif "missed" in desc or "miss" in desc:
         tags.add("missed")
 
-    if "assist" in desc or "ast" in desc:
+    # Synergy taxonomy outcomes
+    if "make 2 pts" in desc or "make 3 pts" in desc:
+        tags.add("made")
+        tags.add("score")
+    if "miss 2 pts" in desc or "miss 3 pts" in desc:
+        tags.add("missed")
+
+    if "assist" in desc or " ast " in desc:
         tags.add("assist")
+
+    if "free throw" in desc or "ft" in desc:
+        tags.add("ft")
 
     if "turnover" in desc:
         tags.add("turnover")
