@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Rebuild local DBs using only what the trial API key can access.
+"""Incremental ingest using only API-accessible data.
 
-Flow:
-1) API access check (seasons + teams)
-2) Optional reset of local DB + vector store
-3) Ingest all accessible teams for the selected season
-4) Backfill player names, rebuild traits, regenerate embeddings
+Goals:
+- Discover what the trial API key can access (seasons/teams/games)
+- Only fetch data that is NOT already in the local DB
+- Rebuild traits/embeddings after ingest (optional)
 """
 from __future__ import annotations
 
@@ -15,16 +14,21 @@ import re
 import shutil
 from pathlib import Path
 
+from src.ingestion.db import connect_db, ensure_schema, db_path
+from src.ingestion.pipeline import (
+    _unwrap_list_payload,
+    iter_games,
+    upsert_games,
+    upsert_players,
+    upsert_plays,
+)
 from src.ingestion.synergy_client import SynergyClient
-from src.ingestion.pipeline import PipelinePlan, run_pipeline, _unwrap_list_payload
-from src.ingestion.db import db_path
 
 
-def pick_season_id(seasons: list[dict]) -> str | None:
+def pick_latest_season_id(seasons: list[dict]) -> str | None:
     if not seasons:
         return None
 
-    # Try common fields to pick the latest season
     def score(s: dict) -> int:
         for key in ("year", "seasonYear", "startYear", "endYear"):
             val = s.get(key)
@@ -32,7 +36,6 @@ def pick_season_id(seasons: list[dict]) -> str | None:
                 return val
             if isinstance(val, str) and val.isdigit():
                 return int(val)
-        # fallback: extract digits from name or id
         for key in ("name", "id", "seasonId"):
             val = s.get(key)
             if isinstance(val, str):
@@ -64,7 +67,7 @@ def reset_local_dbs(root: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--league", default="ncaamb")
-    parser.add_argument("--season", default="")
+    parser.add_argument("--season", default="", help="Season ID to ingest (default: all accessible)")
     parser.add_argument("--reset", action="store_true", help="Delete local DB + vector store before ingest")
     parser.add_argument("--skip-embeddings", action="store_true")
     args = parser.parse_args()
@@ -80,33 +83,89 @@ def main() -> int:
         print(f"❌ No seasons available (status={client.last_status_code}, err={client.last_error})")
         return 1
 
-    season_id = args.season or pick_season_id(seasons)
-    if not season_id:
-        print("❌ Unable to determine season_id from API.")
-        return 1
+    if args.season:
+        season_ids = [str(args.season)]
+    else:
+        # Use all accessible seasons (trial scope)
+        season_ids = []
+        for s in seasons:
+            for key in ("id", "seasonId", "seasonID"):
+                if s.get(key):
+                    season_ids.append(str(s.get(key)))
+                    break
+        if not season_ids:
+            latest = pick_latest_season_id(seasons)
+            if latest:
+                season_ids = [latest]
 
-    teams_payload = client.get_teams(args.league, season_id)
-    teams = [t for t in _unwrap_list_payload(teams_payload) if isinstance(t, dict)]
-    team_ids = [t.get("id") for t in teams if t.get("id")]
-    if not team_ids:
-        print(f"❌ No teams accessible for season {season_id} (status={client.last_status_code}, err={client.last_error})")
+    if not season_ids:
+        print("❌ Unable to determine any season_id from API.")
         return 1
-
-    # Quick games check to verify access
-    _ = client.get_games(args.league, season_id, team_ids[0], limit=1)
-    if client.last_status_code and client.last_status_code >= 400:
-        print(f"❌ Games access failed (status={client.last_status_code}, err={client.last_error})")
-        return 1
-
-    print(f"✅ Access OK. Season: {season_id} | Teams: {len(team_ids)}")
 
     if args.reset:
         reset_local_dbs(root)
 
-    # Ingest all accessible teams for the season
-    plan = PipelinePlan(league_code=args.league, season_id=str(season_id), team_ids=[str(t) for t in team_ids])
-    print("🚚 Running ingestion pipeline...")
-    run_pipeline(plan, api_key=os.getenv("SYNERGY_API_KEY"))
+    conn = connect_db()
+    ensure_schema(conn)
+    cur = conn.cursor()
+
+    total_new_games = 0
+    total_new_plays = 0
+
+    for season_id in season_ids:
+        teams_payload = client.get_teams(args.league, season_id)
+        teams = [t for t in _unwrap_list_payload(teams_payload) if isinstance(t, dict)]
+        team_ids = [t.get("id") for t in teams if t.get("id")]
+
+        if not team_ids:
+            print(f"⚠️  No teams accessible for season {season_id}")
+            continue
+
+        # Existing games for this season
+        cur.execute("SELECT game_id FROM games WHERE season_id = ?", (season_id,))
+        existing_game_ids = {r[0] for r in cur.fetchall()}
+
+        print(f"✅ Season {season_id} | teams: {len(team_ids)} | existing games: {len(existing_game_ids)}")
+
+        # Fetch games by team, but only keep those not in DB
+        new_games: dict[str, dict] = {}
+        for tid in team_ids:
+            for g in iter_games(client, args.league, season_id, tid):
+                gid = g.get("id")
+                if not gid or gid in existing_game_ids or gid in new_games:
+                    continue
+                new_games[gid] = g
+
+        if new_games:
+            inserted = upsert_games(conn, season_id, list(new_games.values()))
+            total_new_games += inserted
+        else:
+            print(f"ℹ️  No new games for season {season_id}")
+
+        # Players: only fetch if team missing in DB
+        for tid in team_ids:
+            cur.execute("SELECT 1 FROM players WHERE team_id = ? LIMIT 1", (tid,))
+            if cur.fetchone():
+                continue
+            payload = client.get_team_players(args.league, tid)
+            players = [p for p in _unwrap_list_payload(payload) if isinstance(p, dict)]
+            if players:
+                upsert_players(conn, tid, players)
+
+        # Events: only for newly added games
+        if new_games:
+            for idx, gid in enumerate(new_games.keys()):
+                if idx % 10 == 0:
+                    print(f"   events {idx}/{len(new_games)}")
+                payload = client.get_game_events(args.league, gid)
+                if not payload:
+                    continue
+                events = [e for e in _unwrap_list_payload(payload) if isinstance(e, dict)]
+                total_new_plays += upsert_plays(conn, gid, events)
+
+    conn.close()
+
+    print(f"✅ New games: {total_new_games} | New plays: {total_new_plays}")
 
     # Backfill player names
     try:
