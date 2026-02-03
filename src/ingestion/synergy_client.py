@@ -107,3 +107,7 @@ class SynergyClient:
     def get_game_events(self, league_code, game_id):
         # Spec: GET /{league}/games/{gameId}/events
         return self._get(f"/{league_code}/games/{game_id}/events")
+
+    def get_team_players(self, league_code, team_id):
+        # Spec: GET /{league}/teams/{teamId}/players
+        return self._get(f"/{league_code}/teams/{team_id}/players")

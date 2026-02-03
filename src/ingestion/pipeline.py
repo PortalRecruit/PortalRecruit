@@ -109,6 +109,40 @@ def upsert_games(conn, season_id: str, games: list[dict]) -> int:
     return count
 
 
+def upsert_players(conn, team_id: str, players: list[dict]) -> int:
+    cur = conn.cursor()
+    rows = []
+
+    for p in players:
+        rows.append(
+            (
+                p.get("id"),
+                team_id,
+                p.get("nameFirst") or p.get("firstName"),
+                p.get("nameLast") or p.get("lastName"),
+                p.get("name") or p.get("fullName"),
+                p.get("position"),
+                p.get("heightInches") or p.get("height"),
+                p.get("weightPounds") or p.get("weight"),
+                p.get("class") or p.get("classYear"),
+            )
+        )
+
+    if not rows:
+        return 0
+
+    cur.executemany(
+        """
+        INSERT OR REPLACE INTO players
+        (player_id, team_id, first_name, last_name, full_name, position, height_in, weight_lb, class_year)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
 def upsert_plays(conn, game_id: str, events: list[dict]) -> int:
     cur = conn.cursor()
     rows = []
@@ -207,7 +241,14 @@ def run_pipeline(plan: PipelinePlan, api_key: str, progress_cb=None) -> dict:
     inserted_games = upsert_games(conn, plan.season_id, games)
     tick("schedule:done", inserted_games=inserted_games)
 
-    # 2) Events
+    # 2) Players (if team_ids supplied)
+    if plan.team_ids:
+        for tid in plan.team_ids:
+            payload = client.get_team_players(plan.league_code, tid)
+            players = [p for p in _unwrap_list_payload(payload) if isinstance(p, dict)]
+            upsert_players(conn, tid, players)
+
+    # 3) Events
     inserted_plays = 0
     if plan.ingest_events:
         tick("events:start")

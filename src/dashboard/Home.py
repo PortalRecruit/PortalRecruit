@@ -87,6 +87,7 @@ elif st.session_state.app_mode == "Search":
 
     # Advanced Filters (collapsed by default)
     min_dog = min_menace = min_unselfish = min_tough = min_rim = min_shot = 0
+    min_size = 0
     n_results = 15
     tag_filter = []
 
@@ -123,6 +124,9 @@ elif st.session_state.app_mode == "Search":
             min_tough = max(min_tough, int(intent.traits.get("tough", 0) * w))
             min_rim = max(min_rim, int(intent.traits.get("rim", 0) * w))
             min_shot = max(min_shot, int(intent.traits.get("shot", 0) * w))
+            # size/measurables intent triggers
+            if intent is INTENTS.get("size_measurables"):
+                min_size = max(min_size, 70)
             tag_filter = list(set(tag_filter + list(intent.tags)))
             exclude_tags |= intent.exclude_tags
 
@@ -182,7 +186,7 @@ elif st.session_state.app_mode == "Search":
                 cur.execute(
                     f"""
                     SELECT player_id, dog_index, menace_index, unselfish_index,
-                           toughness_index, rim_pressure_index, shot_making_index
+                           toughness_index, rim_pressure_index, shot_making_index, size_index
                     FROM player_traits
                     WHERE player_id IN ({ph2})
                     """,
@@ -196,6 +200,7 @@ elif st.session_state.app_mode == "Search":
                         "tough": r[4],
                         "rim": r[5],
                         "shot": r[6],
+                        "size": r[7],
                     }
                     for r in cur.fetchall()
                 }
@@ -241,6 +246,8 @@ elif st.session_state.app_mode == "Search":
                 if rim_index is not None and rim_index < min_rim:
                     continue
                 if shot_index is not None and shot_index < min_shot:
+                    continue
+                if t.get("size") is not None and t.get("size") < min_size:
                     continue
 
                 play_tags = tag_play(desc)

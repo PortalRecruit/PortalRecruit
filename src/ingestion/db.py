@@ -66,12 +66,34 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS players (
+            player_id TEXT PRIMARY KEY,
+            team_id TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            full_name TEXT,
+            position TEXT,
+            height_in REAL,
+            weight_lb REAL,
+            class_year TEXT
+        )
+        """
+    )
+
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS player_traits (
             player_id TEXT PRIMARY KEY,
             player_name TEXT,
             dog_events INTEGER,
             total_events INTEGER,
-            dog_index REAL
+            dog_index REAL,
+            menace_index REAL,
+            unselfish_index REAL,
+            toughness_index REAL,
+            rim_pressure_index REAL,
+            shot_making_index REAL,
+            size_index REAL
         )
         """
     )

@@ -58,6 +58,7 @@ def build_player_traits():
         ("toughness_index", "REAL"),
         ("rim_pressure_index", "REAL"),
         ("shot_making_index", "REAL"),
+        ("size_index", "REAL"),
     ]:
         try:
             cur.execute(f"ALTER TABLE player_traits ADD COLUMN {col} {ctype}")
@@ -73,6 +74,11 @@ def build_player_traits():
         """
     )
     rows = cur.fetchall()
+
+    # Pull size data if available
+    cur.execute("SELECT player_id, height_in, weight_lb FROM players")
+    size_rows = cur.fetchall()
+    size_map = {r[0]: (r[1], r[2]) for r in size_rows}
 
     # Aggregate counts in Python (simple + fast enough for now)
     agg = {}
@@ -114,12 +120,21 @@ def build_player_traits():
         unselfish_index = round((data["assists"] / max(1, data["assists"] + data["turnovers"])) * 100, 3)
         shot_making_index = round((data["made"] / max(1, data["made"] + data["missed"])) * 100, 3)
 
+        # size index: normalize height/weight to a 0-100-ish scale if present
+        h, w = size_map.get(pid, (None, None))
+        size_index = None
+        if h is not None or w is not None:
+            h_val = float(h) if h is not None else 0.0
+            w_val = float(w) if w is not None else 0.0
+            size_index = round(min(100.0, (h_val * 1.0) + (w_val * 0.1)), 3)
+
         cur.execute(
             """
             INSERT OR REPLACE INTO player_traits
             (player_id, player_name, dog_events, total_events, dog_index,
-             menace_index, unselfish_index, toughness_index, rim_pressure_index, shot_making_index)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             menace_index, unselfish_index, toughness_index, rim_pressure_index,
+             shot_making_index, size_index)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pid,
@@ -132,6 +147,7 @@ def build_player_traits():
                 toughness_index,
                 rim_pressure_index,
                 shot_making_index,
+                size_index,
             ),
         )
 
