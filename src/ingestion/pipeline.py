@@ -116,9 +116,13 @@ def upsert_players(conn, team_id: str, players: list[dict]) -> int:
     for p in players:
         full_name = p.get("name") or p.get("fullName")
         if isinstance(full_name, dict):
-            full_name = full_name.get("full") or full_name.get("fullName")
-        if full_name is not None:
-            full_name = str(full_name)
+            full_name = full_name.get("full") or full_name.get("fullName") or full_name
+        if full_name is not None and not isinstance(full_name, str):
+            try:
+                import json
+                full_name = json.dumps(full_name, ensure_ascii=False)
+            except Exception:
+                full_name = str(full_name)
 
         rows.append(
             (
