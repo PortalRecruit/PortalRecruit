@@ -57,6 +57,13 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # Safe migrations for existing DBs missing new columns
+    for col, ctype in [("player_id", "TEXT"), ("player_name", "TEXT")]:
+        try:
+            cur.execute(f"ALTER TABLE plays ADD COLUMN {col} {ctype}")
+        except Exception:
+            pass
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS player_traits (
