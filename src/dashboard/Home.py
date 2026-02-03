@@ -233,6 +233,8 @@ elif st.session_state.app_mode == "Search":
                     continue
 
                 play_tags = tag_play(desc)
+                if "non_possession" in play_tags:
+                    continue
                 if tag_filter and not set(tag_filter).issubset(set(play_tags)):
                     continue
 

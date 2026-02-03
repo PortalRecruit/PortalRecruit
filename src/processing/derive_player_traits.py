@@ -91,6 +91,9 @@ def build_player_traits():
                 "total_events": 0,
             }
         tags = set(tag_play(desc))
+        if "non_possession" in tags:
+            continue
+
         agg[player_id]["total_events"] += 1
         agg[player_id]["dog_events"] += int(bool(tags & {"oreb", "loose_ball", "charge_taken", "deflection"}))
         agg[player_id]["menace_events"] += int(bool(tags & {"steal", "block", "deflection"}))

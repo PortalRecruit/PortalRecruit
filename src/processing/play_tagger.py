@@ -37,6 +37,9 @@ def tag_play(description: str, clock_seconds: int = None) -> list[str]:
         tags.add("jumpshot")
 
     # --- OUTCOMES ---
+    if "non possession" in desc or "shot clock violation" in desc:
+        tags.add("non_possession")
+
     if "made" in desc or "make" in desc:
         tags.add("made")
         tags.add("score")
