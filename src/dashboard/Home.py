@@ -88,16 +88,21 @@ elif st.session_state.app_mode == "Search":
     # Advanced Filters (collapsed by default)
     min_dog = min_menace = min_unselfish = min_tough = min_rim = min_shot = 0
     min_size = 0
+    slider_dog = slider_menace = slider_unselfish = slider_tough = slider_rim = slider_shot = 0
+    slider_size = 0
+    intent_dog = intent_menace = intent_unselfish = intent_tough = intent_rim = intent_shot = 0
+    intent_size = 0
     n_results = 15
     tag_filter = []
 
     with st.sidebar.expander("Advanced Filters", expanded=False):
-        min_dog = st.slider("Min Dog Index", 0, 100, 0)
-        min_menace = st.slider("Min Defensive Menace", 0, 100, 0)
-        min_unselfish = st.slider("Min Unselfishness", 0, 100, 0)
-        min_tough = st.slider("Min Toughness", 0, 100, 0)
-        min_rim = st.slider("Min Rim Pressure", 0, 100, 0)
-        min_shot = st.slider("Min Shot Making", 0, 100, 0)
+        slider_dog = st.slider("Min Dog Index", 0, 100, 0)
+        slider_menace = st.slider("Min Defensive Menace", 0, 100, 0)
+        slider_unselfish = st.slider("Min Unselfishness", 0, 100, 0)
+        slider_tough = st.slider("Min Toughness", 0, 100, 0)
+        slider_rim = st.slider("Min Rim Pressure", 0, 100, 0)
+        slider_shot = st.slider("Min Shot Making", 0, 100, 0)
+        slider_size = st.slider("Min Size Index", 0, 100, 0)
         n_results = st.slider("Number of Results", 5, 50, 15)
         tag_filter = st.multiselect(
             "Required Tags",
@@ -151,15 +156,15 @@ elif st.session_state.app_mode == "Search":
             matched_phrases.append(phrase)
             explain.append(f"Matched '{phrase}' → {list(intent.traits.keys())}")
 
-            min_dog = max(min_dog, int(intent.traits.get("dog", 0) * w))
-            min_menace = max(min_menace, int(intent.traits.get("menace", 0) * w))
-            min_unselfish = max(min_unselfish, int(intent.traits.get("unselfish", 0) * w))
-            min_tough = max(min_tough, int(intent.traits.get("tough", 0) * w))
-            min_rim = max(min_rim, int(intent.traits.get("rim", 0) * w))
-            min_shot = max(min_shot, int(intent.traits.get("shot", 0) * w))
+            intent_dog = max(intent_dog, int(intent.traits.get("dog", 0) * w))
+            intent_menace = max(intent_menace, int(intent.traits.get("menace", 0) * w))
+            intent_unselfish = max(intent_unselfish, int(intent.traits.get("unselfish", 0) * w))
+            intent_tough = max(intent_tough, int(intent.traits.get("tough", 0) * w))
+            intent_rim = max(intent_rim, int(intent.traits.get("rim", 0) * w))
+            intent_shot = max(intent_shot, int(intent.traits.get("shot", 0) * w))
             # size/measurables intent triggers
             if intent is INTENTS.get("size_measurables"):
-                min_size = max(min_size, 70)
+                intent_size = max(intent_size, 70)
             tag_filter = list(set(tag_filter + list(intent.tags)))
             exclude_tags |= intent.exclude_tags
 
@@ -273,19 +278,19 @@ elif st.session_state.app_mode == "Search":
                 rim_index = t.get("rim")
                 shot_index = t.get("shot")
 
-                if dog_index is not None and dog_index < min_dog:
+                if dog_index is not None and dog_index < slider_dog:
                     continue
-                if menace_index is not None and menace_index < min_menace:
+                if menace_index is not None and menace_index < slider_menace:
                     continue
-                if unselfish_index is not None and unselfish_index < min_unselfish:
+                if unselfish_index is not None and unselfish_index < slider_unselfish:
                     continue
-                if tough_index is not None and tough_index < min_tough:
+                if tough_index is not None and tough_index < slider_tough:
                     continue
-                if rim_index is not None and rim_index < min_rim:
+                if rim_index is not None and rim_index < slider_rim:
                     continue
-                if shot_index is not None and shot_index < min_shot:
+                if shot_index is not None and shot_index < slider_shot:
                     continue
-                if t.get("size") is not None and t.get("size") < min_size:
+                if t.get("size") is not None and t.get("size") < slider_size:
                     continue
 
                 play_tags = tag_play(desc)
@@ -308,6 +313,15 @@ elif st.session_state.app_mode == "Search":
                 ]:
                     val = t.get(key) or 0
                     score += val * weight
+
+                # soft intent boosts (do not hard-filter)
+                score += max(0, (t.get("dog") or 0) - intent_dog) * 0.1
+                score += max(0, (t.get("menace") or 0) - intent_menace) * 0.1
+                score += max(0, (t.get("unselfish") or 0) - intent_unselfish) * 0.1
+                score += max(0, (t.get("tough") or 0) - intent_tough) * 0.1
+                score += max(0, (t.get("rim") or 0) - intent_rim) * 0.1
+                score += max(0, (t.get("shot") or 0) - intent_shot) * 0.1
+
                 score += len(set(play_tags).intersection(set(tag_filter))) * 10
 
                 home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
