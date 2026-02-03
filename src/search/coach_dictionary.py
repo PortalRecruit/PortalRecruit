@@ -12,6 +12,7 @@ from typing import Dict, List, Set
 class IntentBoost:
     traits: Dict[str, int] = field(default_factory=dict)  # trait -> min boost
     tags: Set[str] = field(default_factory=set)
+    exclude_tags: Set[str] = field(default_factory=set)
 
 
 # Canonical intents (extensible)
@@ -51,6 +52,11 @@ INTENTS: Dict[str, IntentBoost] = {
     "size_measurables": IntentBoost(
         traits={},
         tags=set(),
+    ),
+    "negative_filters": IntentBoost(
+        traits={},
+        tags=set(),
+        exclude_tags={"turnover", "non_possession"},
     ),
 }
 
@@ -135,6 +141,8 @@ PHRASES: Dict[str, List[str]] = {
         "transition 3s",
         "pull-up jumper",
         "mid-range assassin",
+        "bucket getter",
+        "bucket-getter",
     ],
     "unselfish_connectivity": [
         "high assist-to-turnover ratio",
@@ -191,6 +199,10 @@ PHRASES: Dict[str, List[str]] = {
         "lateral quickness",
         "defensive stopper",
         "defensive menace",
+        "3-and-d",
+        "two-way",
+        "two way",
+        "dog on defense",
     ],
     "toughness_winning": [
         "winner",
@@ -224,6 +236,8 @@ PHRASES: Dict[str, List[str]] = {
         "chip on shoulder",
         "heart over height",
         "impact player",
+        "energy bunny",
+        "motor never stops",
     ],
     "iq_feel": [
         "basketball iq",
@@ -281,6 +295,7 @@ PHRASES: Dict[str, List[str]] = {
         "consistent effort",
         "positive reinforcement",
         "energy giver",
+        "energy vampire",
         "command of the huddle",
     ],
     "size_measurables": [
@@ -309,7 +324,17 @@ PHRASES: Dict[str, List[str]] = {
         "prototypical size",
         "big body",
         "long levered",
+        "big wing",
+        "big body guard",
     ],
+    "negative_filters": [
+        "empty calories",
+        "volume scorer",
+        "black hole",
+        "ball stopper",
+        "energy vampire",
+    ],
+}
 }
 
 

@@ -111,6 +111,7 @@ elif st.session_state.app_mode == "Search":
         from src.search.coach_dictionary import infer_intents  # noqa: E402
 
         intents = infer_intents(query)
+        exclude_tags = set()
         for intent in intents.values():
             min_dog = max(min_dog, intent.traits.get("dog", 0))
             min_menace = max(min_menace, intent.traits.get("menace", 0))
@@ -119,6 +120,7 @@ elif st.session_state.app_mode == "Search":
             min_rim = max(min_rim, intent.traits.get("rim", 0))
             min_shot = max(min_shot, intent.traits.get("shot", 0))
             tag_filter = list(set(tag_filter + list(intent.tags)))
+            exclude_tags |= intent.exclude_tags
 
         st.write(f"Searching for: **{query}**")
 
@@ -231,6 +233,8 @@ elif st.session_state.app_mode == "Search":
 
                 play_tags = tag_play(desc)
                 if "non_possession" in play_tags:
+                    continue
+                if exclude_tags and set(play_tags).intersection(exclude_tags):
                     continue
                 if tag_filter and not set(tag_filter).issubset(set(play_tags)):
                     continue
