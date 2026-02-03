@@ -222,6 +222,20 @@ if report:
                         from src.processing.generate_embeddings import generate_embeddings  # noqa: E402
                         generate_embeddings()
 
+                        status.write("✅ Backfilling player names...")
+                        try:
+                            from scripts.backfill_player_names import main as backfill_players  # noqa: E402
+                            backfill_players()
+                        except Exception as e:
+                            status.write(f"⚠️ Backfill failed: {e}")
+
+                        status.write("✅ Building player traits...")
+                        try:
+                            from src.processing.derive_player_traits import build_player_traits  # noqa: E402
+                            build_player_traits()
+                        except Exception as e:
+                            status.write(f"⚠️ Traits build failed: {e}")
+
                         status.update(label="Pipeline complete", state="complete")
                         prog.progress(100)
                         
