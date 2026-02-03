@@ -363,7 +363,6 @@ PHRASES: Dict[str, List[str]] = {
         "low motor",
     ],
 }
-}
 
 
 ROLE_PHRASES: Dict[str, List[str]] = {
