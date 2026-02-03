@@ -108,24 +108,17 @@ elif st.session_state.app_mode == "Search":
 
     if query:
         # --- QUERY INTENTS (coach-speak -> filters) ---
-        q = query.lower()
-        if "get in the lane" in q or "rim pressure" in q or "downhill" in q:
-            min_rim = max(min_rim, 30)
-            tag_filter = list(set(tag_filter + ["drive", "rim_pressure"]))
-        if "keep people out" in q or "rim protector" in q:
-            min_menace = max(min_menace, 25)
-            tag_filter = list(set(tag_filter + ["block"]))
-        if "unselfish" in q or "selfless" in q:
-            min_unselfish = max(min_unselfish, 40)
-        if "tough" in q or "toughness" in q:
-            min_tough = max(min_tough, 25)
-            tag_filter = list(set(tag_filter + ["loose_ball", "charge_taken"]))
-        if "shot maker" in q or "shot making" in q or "shooter" in q:
-            min_shot = max(min_shot, 40)
-            tag_filter = list(set(tag_filter + ["jumpshot", "3pt"]))
-        if "defensive menace" in q or "menace" in q:
-            min_menace = max(min_menace, 35)
-            tag_filter = list(set(tag_filter + ["steal", "block", "deflection"]))
+        from src.search.coach_dictionary import infer_intents  # noqa: E402
+
+        intents = infer_intents(query)
+        for intent in intents.values():
+            min_dog = max(min_dog, intent.traits.get("dog", 0))
+            min_menace = max(min_menace, intent.traits.get("menace", 0))
+            min_unselfish = max(min_unselfish, intent.traits.get("unselfish", 0))
+            min_tough = max(min_tough, intent.traits.get("tough", 0))
+            min_rim = max(min_rim, intent.traits.get("rim", 0))
+            min_shot = max(min_shot, intent.traits.get("shot", 0))
+            tag_filter = list(set(tag_filter + list(intent.tags)))
 
         st.write(f"Searching for: **{query}**")
 

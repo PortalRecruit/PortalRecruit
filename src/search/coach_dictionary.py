@@ -1,0 +1,242 @@
+"""Coach-speak dictionary → intent mapping.
+
+Buckets map phrases to trait boosts and required tags.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Set
+
+
+@dataclass
+class IntentBoost:
+    traits: Dict[str, int] = field(default_factory=dict)  # trait -> min boost
+    tags: Set[str] = field(default_factory=set)
+
+
+# Canonical intents (extensible)
+INTENTS: Dict[str, IntentBoost] = {
+    "paint_presence_offense": IntentBoost(
+        traits={"rim": 30},
+        tags={"drive", "rim_pressure"},
+    ),
+    "paint_presence_defense": IntentBoost(
+        traits={"menace": 25, "tough": 20},
+        tags={"block", "rim_protection"},
+    ),
+    "shooting_spacing": IntentBoost(
+        traits={"shot": 30},
+        tags={"jumpshot", "3pt"},
+    ),
+    "unselfish_connectivity": IntentBoost(
+        traits={"unselfish": 30},
+        tags={"assist"},
+    ),
+    "defensive_menace": IntentBoost(
+        traits={"menace": 35},
+        tags={"steal", "block", "deflection"},
+    ),
+    "toughness_winning": IntentBoost(
+        traits={"tough": 25, "dog": 20},
+        tags={"loose_ball", "charge_taken"},
+    ),
+    "iq_feel": IntentBoost(
+        traits={"unselfish": 20},
+        tags=set(),
+    ),
+}
+
+
+# Phrase dictionary (seeded from Jesse's list)
+PHRASES: Dict[str, List[str]] = {
+    "paint_presence_offense": [
+        "paint touches",
+        "downhill driver",
+        "rim pressure",
+        "two feet in the paint",
+        "collapses the defense",
+        "draws two defenders",
+        "finishes through contact",
+        "lives at the line",
+        "attacks closeouts",
+        "first step explosion",
+        "blow-by speed",
+        "straight line driver",
+        "force at the rim",
+        "drive and kick",
+        "body control",
+        "absorbs contact",
+        "slasher",
+        "penetrator",
+        "rim attacker",
+        "north-south attacker",
+        "turns the corner",
+        "get in the lane",
+        "touch the paint",
+    ],
+    "paint_presence_defense": [
+        "keep people out",
+        "rim protector",
+        "anchor",
+        "verticality",
+        "walls up",
+        "drop coverage big",
+        "shot blocker",
+        "paint enforcer",
+        "rotator",
+        "clean rebounder",
+        "ends possessions",
+        "alter shots",
+        "post defense",
+        "holds ground",
+        "physical interior defender",
+        "protects the basket",
+        "low post wall",
+        "glass cleaner",
+        "box out discipline",
+    ],
+    "shooting_spacing": [
+        "floor spacer",
+        "gravity",
+        "knockdown shooter",
+        "catch and shoot",
+        "off the bounce shooting",
+        "range extender",
+        "shooting clip",
+        "efficient volume",
+        "zone buster",
+        "clean mechanics",
+        "quick release",
+        "deep range",
+        "movement shooter",
+        "runs off screens",
+        "shot hunter",
+        "microwave scorer",
+        "heat check",
+        "corner specialist",
+        "stretch big",
+        "pick and pop",
+        "three-level scorer",
+        "perimeter threat",
+        "elite stroke",
+        "pure shooter",
+        "automatic from deep",
+        "spacing equity",
+        "shot creator",
+        "floor stretcher",
+        "transition 3s",
+        "pull-up jumper",
+        "mid-range assassin",
+    ],
+    "unselfish_connectivity": [
+        "high assist-to-turnover ratio",
+        "ball mover",
+        "hockey assist",
+        "extra pass",
+        "willing passer",
+        "connector",
+        "glue guy",
+        "facilitator",
+        "processing speed",
+        "reads the floor",
+        "team-first mentality",
+        "low usage efficiency",
+        "keeps the ball popping",
+        "play connector",
+        "makes teammates better",
+        "screens for others",
+        "dimer",
+        "vision",
+        "spray passer",
+        "unselfish",
+        "share the rock",
+        "flow offense",
+        "chain mover",
+        "role acceptance",
+        "chemistry booster",
+        "servant leader",
+        "pass-first",
+    ],
+    "defensive_menace": [
+        "point of attack defender",
+        "lockdown",
+        "clamps",
+        "on-ball pest",
+        "disruptor",
+        "passing lanes",
+        "deflections",
+        "steal percentage",
+        "pick-pocket",
+        "switchability",
+        "blows up screens",
+        "navigates screens",
+        "shoots the gap",
+        "ball pressure",
+        "full court press",
+        "takes charges",
+        "active hands",
+        "closeout speed",
+        "isolation defender",
+        "screen navigation",
+        "takes away strong hand",
+        "sits down on defense",
+        "lateral quickness",
+        "defensive stopper",
+        "defensive menace",
+    ],
+    "toughness_winning": [
+        "winner",
+        "championship dna",
+        "gritty",
+        "dog",
+        "dawg",
+        "junkyard dog",
+        "scrappy",
+        "50/50 balls",
+        "diving on the floor",
+        "winning plays",
+        "closer",
+        "resilient",
+        "handles adversity",
+        "competitor",
+        "hates to lose",
+        "physical toughness",
+        "enforcer",
+        "battle tested",
+        "dirty work",
+        "chip on shoulder",
+    ],
+    "iq_feel": [
+        "basketball iq",
+        "feel for the game",
+        "cerebral player",
+        "high awareness",
+        "spatial awareness",
+        "clock management",
+        "situational basketball",
+        "read and react",
+        "processing ability",
+        "play anticipation",
+        "manipulates defense",
+        "smart cuts",
+        "understanding spacing",
+        "pace control",
+        "change of speeds",
+        "decision making",
+        "low turnover",
+        "instinctive",
+        "playbook",
+        "tempo setter",
+    ],
+}
+
+
+def infer_intents(query: str) -> Dict[str, IntentBoost]:
+    q = (query or "").lower()
+    hits: Dict[str, IntentBoost] = {}
+    for bucket, phrases in PHRASES.items():
+        for p in phrases:
+            if p in q:
+                hits[bucket] = INTENTS[bucket]
+                break
+    return hits
