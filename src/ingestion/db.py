@@ -5,7 +5,7 @@ import sqlite3
 
 
 def project_root() -> str:
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 
 def db_path() -> str:
