@@ -42,6 +42,8 @@ class SynergyClient:
             self._min_interval_s = 1.5
         if not hasattr(self, "_last_request_ts"):
             self._last_request_ts = 0.0
+        if not hasattr(self, "_req_count"):
+            self._req_count = 0
 
         for attempt in range(retries):
             # Global throttle between requests
@@ -49,6 +51,11 @@ class SynergyClient:
             wait_needed = self._min_interval_s - (now - self._last_request_ts)
             if wait_needed > 0:
                 time.sleep(wait_needed)
+
+            # Periodic micro-cooldown every 25 requests
+            self._req_count += 1
+            if self._req_count % 25 == 0:
+                time.sleep(3.0)
 
             try:
                 response = requests.get(url, headers=self.headers, params=params, timeout=30)
