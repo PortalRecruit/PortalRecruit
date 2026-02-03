@@ -179,21 +179,25 @@ if report:
             selected_team_ids = []
 
         st.markdown("---")
-        st.markdown("<div style=\"font-size:20px; font-weight:800; margin-top:14px;\">3. Run Pipeline</div>", unsafe_allow_html=True)
-        
-        ingest_events = st.toggle("Ingest Play-by-Play Events", value=True)
+        skout_db = os.path.join(PROJECT_ROOT, "data", "skout.db")
+        if os.path.exists(skout_db) and os.path.getsize(skout_db) > 1024:
+            st.markdown("<div style=\"font-size:20px; font-weight:800; margin-top:14px;\">3. Run Pipeline</div>", unsafe_allow_html=True)
+            st.success("✅ Existing database detected. Ingestion disabled to protect current data.")
+        else:
+            st.markdown("<div style=\"font-size:20px; font-weight:800; margin-top:14px;\">3. Run Pipeline</div>", unsafe_allow_html=True)
+            ingest_events = st.toggle("Ingest Play-by-Play Events", value=True)
 
-        st.markdown("### 🚀 Jump to Search")
-        if st.button("Open Search Interface"):
-            st.session_state.app_mode = "Search"
-            st.rerun()
+            st.markdown("### 🚀 Jump to Search")
+            if st.button("Open Search Interface"):
+                st.session_state.app_mode = "Search"
+                st.rerun()
 
-        if st.button("Run Pipeline Now", type="primary"):
-            if not api_key_for_scan:
-                st.error("No API key available.")
-            else:
-                prog = st.progress(0)
-                status = st.status("Starting pipeline...", expanded=True)
+            if st.button("Run Pipeline Now", type="primary"):
+                if not api_key_for_scan:
+                    st.error("No API key available.")
+                else:
+                    prog = st.progress(0)
+                    status = st.status("Starting pipeline...", expanded=True)
 
                 # Check if Vector DB already exists
                 vector_db_path = os.path.join(PROJECT_ROOT, "data", "vector_db", "chroma.sqlite3")

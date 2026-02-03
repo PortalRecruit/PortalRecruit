@@ -226,8 +226,14 @@ elif st.session_state.app_mode == "Search":
         try:
             collection = client.get_collection(name="skout_plays")
         except Exception:
-            st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
-            st.stop()
+            # try restore once more if parts exist
+            _restore_vector_db_if_needed()
+            client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
+            try:
+                collection = client.get_collection(name="skout_plays")
+            except Exception:
+                st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
+                st.stop()
 
         # Query expansion: add matched phrases to help retrieval
         expanded_query = query
