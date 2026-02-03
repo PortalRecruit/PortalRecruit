@@ -172,8 +172,6 @@ elif st.session_state.app_mode == "Search":
             tag_filter = list(set(tag_filter + ["rim_pressure", "block", "post_up"]))
 
         st.write(f"Searching for: **{query}**")
-        if explain:
-            st.caption("Why these results: " + " | ".join(explain))
 
         # --- VECTOR SEARCH ---
         import chromadb
