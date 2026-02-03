@@ -154,6 +154,7 @@ elif st.session_state.app_mode == "Search":
         resilience_intent = "resilience" in intents
         defensive_big_intent = "defensive_big" in intents
         clutch_intent = "clutch" in intents
+        undervalued_intent = "undervalued" in intents
 
         for hit, phrase in intents.values():
             intent = hit.intent
@@ -237,7 +238,8 @@ elif st.session_state.app_mode == "Search":
                     f"""
                     SELECT player_id, dog_index, menace_index, unselfish_index,
                            toughness_index, rim_pressure_index, shot_making_index, size_index,
-                           leadership_index, resilience_index, defensive_big_index, clutch_index
+                           leadership_index, resilience_index, defensive_big_index, clutch_index,
+                           undervalued_index
                     FROM player_traits
                     WHERE player_id IN ({ph2})
                     """,
@@ -256,6 +258,7 @@ elif st.session_state.app_mode == "Search":
                         "resilience": r[9],
                         "defensive_big": r[10],
                         "clutch": r[11],
+                        "undervalued": r[12],
                     }
                     for r in cur.fetchall()
                 }
@@ -265,11 +268,12 @@ elif st.session_state.app_mode == "Search":
                 """
                 SELECT AVG(dog_index), AVG(menace_index), AVG(unselfish_index),
                        AVG(toughness_index), AVG(rim_pressure_index), AVG(shot_making_index), AVG(size_index),
-                       AVG(leadership_index), AVG(resilience_index), AVG(defensive_big_index), AVG(clutch_index)
+                       AVG(leadership_index), AVG(resilience_index), AVG(defensive_big_index), AVG(clutch_index),
+                       AVG(undervalued_index)
                 FROM player_traits
                 """
             )
-            avg_row = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            avg_row = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             trait_avg = {
                 "dog": avg_row[0] or 0,
                 "menace": avg_row[1] or 0,
@@ -282,6 +286,7 @@ elif st.session_state.app_mode == "Search":
                 "resilience": avg_row[8] or 0,
                 "defensive_big": avg_row[9] or 0,
                 "clutch": avg_row[10] or 0,
+                "undervalued": avg_row[11] or 0,
             }
 
             # Pull game matchup
@@ -373,6 +378,9 @@ elif st.session_state.app_mode == "Search":
                 if clutch_intent and t.get("clutch"):
                     score += t.get("clutch") * 15
 
+                if undervalued_intent and t.get("undervalued"):
+                    score += t.get("undervalued") * 14
+
                 if "turnover" in play_tags:
                     score -= 8
 
@@ -391,6 +399,7 @@ elif st.session_state.app_mode == "Search":
                     "resilience": ("Resilience", t.get("resilience")),
                     "defensive_big": ("Defensive Big", t.get("defensive_big")),
                     "clutch": ("Clutch", t.get("clutch")),
+                    "undervalued": ("Undervalued", t.get("undervalued")),
                 }
                 strengths = []
                 weaknesses = []

@@ -76,6 +76,11 @@ INTENTS: Dict[str, IntentBoost] = {
         tags={"made", "score", "assist"},
         exclude_tags={"non_possession"},
     ),
+    "undervalued": IntentBoost(
+        traits={"unselfish": 25, "tough": 15, "menace": 10},
+        tags={"assist", "deflection", "loose_ball"},
+        exclude_tags={"non_possession"},
+    ),
     "size_measurables": IntentBoost(
         traits={},
         tags=set(),
@@ -405,6 +410,21 @@ PHRASES: Dict[str, List[str]] = {
         "ice cold",
         "buzzer beater",
     ],
+    "undervalued": [
+        "undervalued",
+        "overlooked",
+        "hidden gem",
+        "low maintenance",
+        "high yield",
+        "low usage",
+        "glue guy",
+        "dirty work",
+        "impact without scoring",
+        "role player",
+        "connector",
+        "unsung",
+        "under the radar",
+    ],
     "size_measurables": [
         "positional size",
         "length",
@@ -485,6 +505,8 @@ WEIGHTED_PHRASES: Dict[str, List[Tuple[str, float]]] = {
     + [("rim protector", 1.0), ("lane clogger", 0.8)],
     "clutch": [(p, 1.0) for p in PHRASES["clutch"]]
     + [("clutch", 1.0), ("dagger", 0.8), ("game winner", 0.8)],
+    "undervalued": [(p, 1.0) for p in PHRASES["undervalued"]]
+    + [("hidden gem", 1.0), ("overlooked", 0.8)],
     "size_measurables": [(p, 1.0) for p in PHRASES["size_measurables"]]
     + [("long", 0.6), ("big framed", 0.6)],
     "negative_filters": [(p, 1.0) for p in PHRASES["negative_filters"]],

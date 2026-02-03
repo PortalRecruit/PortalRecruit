@@ -351,6 +351,12 @@ def run_pipeline(plan: PipelinePlan, api_key: str, progress_cb=None) -> dict:
         except Exception:
             pass
 
+        try:
+            from src.processing.derive_undervalued import build_undervalued_metrics
+            build_undervalued_metrics()
+        except Exception:
+            pass
+
     conn.close()
 
     return {
