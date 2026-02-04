@@ -528,9 +528,15 @@ PHRASES: Dict[str, List[str]] = {
 
 
 ROLE_PHRASES: Dict[str, List[str]] = {
-    "guard": ["pg", "point guard", "lead guard", "floor general"],
-    "wing": ["wing", "3-and-d", "two-way wing"],
-    "big": ["big", "rim protector", "anchor", "post player", "center"],
+    "guard": ["pg", "point guard", "lead guard", "floor general", "shooting guard", "sg", "combo guard"],
+    "wing": ["wing", "3-and-d", "two-way wing", "small forward", "sf"],
+    "big": ["big", "rim protector", "anchor", "post player", "center", "power forward", "pf"],
+}
+
+ROLE_PATTERNS = {
+    "guard": [r"\bpoint guard\b", r"\blead guard\b", r"\bshooting guard\b", r"\bcombo guard\b", r"\bpg\b", r"\bsg\b"],
+    "wing": [r"\bwing\b", r"\bsmall forward\b", r"\bsf\b", r"\b3-and-d\b", r"\btwo-way wing\b"],
+    "big": [r"\bcenter\b", r"\bpost player\b", r"\bpower forward\b", r"\bpf\b", r"\brim protector\b", r"\banchor\b"],
 }
 
 WEIGHTED_PHRASES: Dict[str, List[Tuple[str, float]]] = {
@@ -570,19 +576,61 @@ WEIGHTED_PHRASES: Dict[str, List[Tuple[str, float]]] = {
 }
 
 
-def infer_intents(query: str) -> Dict[str, IntentHit]:
+_PHRASE_EMBEDS = None
+
+
+def _semantic_expand(query: str, top_k: int = 8, min_score: float = 0.48) -> set[str]:
+    """Use sentence-transformers (if available) to suggest related phrases."""
+    global _PHRASE_EMBEDS
+    try:
+        from sentence_transformers import SentenceTransformer, util
+    except Exception:
+        return set()
+
+    phrases = []
+    for items in PHRASES.values():
+        phrases.extend(items)
+    phrases = list(dict.fromkeys(phrases))
+
+    if _PHRASE_EMBEDS is None:
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        _PHRASE_EMBEDS = (model, model.encode(phrases, convert_to_tensor=True))
+
+    model, embeds = _PHRASE_EMBEDS
+    q_emb = model.encode([query], convert_to_tensor=True)
+    scores = util.cos_sim(q_emb, embeds)[0]
+    import torch
+    top = torch.topk(scores, k=min(top_k, len(phrases)))
+    out = set()
+    for idx, score in zip(top.indices.tolist(), top.values.tolist()):
+        if score >= min_score:
+            out.add(phrases[idx])
+    return out
+
+
+def infer_intents(query: str, semantic_expand: bool = True) -> Dict[str, IntentHit]:
     q = (query or "").lower()
     hits: Dict[str, IntentHit] = {}
 
-    # role hints
+    # role hints (avoid treating "guard" as verb)
     role_hints: Set[str] = set()
-    for role, phrases in ROLE_PHRASES.items():
-        if any(p in q for p in phrases):
+    import re
+    for role, patterns in ROLE_PATTERNS.items():
+        if any(re.search(p, q) for p in patterns):
             role_hints.add(role)
+
+    # optional semantic expansion
+    expanded = set()
+    if semantic_expand and q:
+        try:
+            import torch  # noqa: F401
+            expanded = _semantic_expand(q)
+        except Exception:
+            expanded = set()
 
     for bucket, phrases in WEIGHTED_PHRASES.items():
         for p, w in phrases:
-            if p in q:
+            if p in q or p in expanded:
                 hit = IntentHit(intent=INTENTS[bucket], weight=w, role_hints=role_hints)
                 hits[bucket] = hit
                 break
@@ -596,13 +644,20 @@ def infer_intents_verbose(query: str) -> Dict[str, tuple[IntentHit, str]]:
     hits: Dict[str, tuple[IntentHit, str]] = {}
 
     role_hints: Set[str] = set()
-    for role, phrases in ROLE_PHRASES.items():
-        if any(p in q for p in phrases):
+    import re
+    for role, patterns in ROLE_PATTERNS.items():
+        if any(re.search(p, q) for p in patterns):
             role_hints.add(role)
+
+    expanded = set()
+    try:
+        expanded = _semantic_expand(q)
+    except Exception:
+        expanded = set()
 
     for bucket, phrases in WEIGHTED_PHRASES.items():
         for p, w in phrases:
-            if p in q:
+            if p in q or p in expanded:
                 hit = IntentHit(intent=INTENTS[bucket], weight=w, role_hints=role_hints)
                 hits[bucket] = (hit, p)
                 break
