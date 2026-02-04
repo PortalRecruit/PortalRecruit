@@ -64,7 +64,7 @@ class PlayEnricher:
             # A. Generate Embeddings (if ML available)
             if HAS_ML:
                 # Embed the descriptions directly
-                embeddings = self.model.encode(batch_docs).tolist()
+                embeddings = self.model.encode(batch_docs, normalize_embeddings=True).tolist()
                 new_embeddings.extend(embeddings)
 
             # B. Generate Tags

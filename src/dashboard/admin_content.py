@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import sys
-import subprocess
 import time
 import requests
 from dotenv import load_dotenv

@@ -1,5 +1,5 @@
 # PortalRecruit: AI-Powered Scouting Dashboard
-**Project Owner:** PortalRecruitsearch
+**Project Owner:** PortalRecruit Search
 
 ## Overview
 A semantic video search engine for NCAA basketball scouting, combining Synergy Sports data with custom AI vision models.

@@ -33,15 +33,15 @@ def generate_embeddings():
         
         # We combine description + tags to give the AI maximum context
         # e.g. "Missed 3pt Jump Shot (PnR) [Tags: 3pt, pnr, missed]"
-        documents = [f"{r[1]} [Tags: {r[2]}]" for r in batch]
+        documents = [f"{r[1] or ''} [Tags: {r[2] or ''}]" for r in batch]
         
         metadatas = [
-            {"game_id": r[3], "clock": r[4], "tags": r[2], "original_desc": r[1]} 
+            {"game_id": r[3], "clock": r[4], "tags": r[2] or "", "original_desc": r[1] or ""} 
             for r in batch
         ]
 
         # Generate Embeddings
-        embeddings = model.encode(documents).tolist()
+        embeddings = model.encode(documents, normalize_embeddings=True).tolist()
 
         # Save to Chroma
         collection.upsert(

@@ -1,7 +1,9 @@
 import sys
-import streamlit as st
 from pathlib import Path
 
+import streamlit as st
+
+from src.dashboard.theme import inject_background
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -10,7 +12,6 @@ if str(REPO_ROOT) not in sys.path:
 
 # --- 2. PAGE CONFIGURATION ---
 WORDMARK_DARK_URL = "https://skoutsearch.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_DARK.jpg"
-from src.dashboard.theme import inject_background
 
 st.set_page_config(
     page_title="PortalRecruit | Search",
