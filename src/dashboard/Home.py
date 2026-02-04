@@ -12,13 +12,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # --- 2. PAGE CONFIGURATION ---
-WORDMARK_DARK_URL = "https://skoutsearch.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.png"
+WORDMARK_DARK_URL = "https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.png"
 from src.dashboard.theme import inject_background
 
 st.set_page_config(
     page_title="PortalRecruit | Search",
     layout="wide",
-    page_icon="https://skoutsearch.github.io/PortalRecruit/PR_LOGO_BBALL_SQUARE_HARDWOODBG_2.PNG",
+    page_icon="https://portalrecruit.github.io/PortalRecruit/PR_LOGO_BBALL_SQUARE_HARDWOODBG_2.PNG",
     initial_sidebar_state="expanded", # Changed to expanded for navigation
 )
 inject_background()

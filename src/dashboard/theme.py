@@ -5,8 +5,8 @@ from __future__ import annotations
 import streamlit as st
 
 
-CSS_URL = "https://skoutsearch.github.io/PortalRecruit/streamlit.css"
-BG_VIDEO_URL = "https://skoutsearch.github.io/PortalRecruit/PORTALRECRUIT_ANIMATED_LOGO.mp4"
+CSS_URL = "https://portalrecruit.github.io/PortalRecruit/streamlit.css"
+BG_VIDEO_URL = "https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_ANIMATED_LOGO.mp4"
 
 
 def inject_background(video_url: str | None = None) -> None:
