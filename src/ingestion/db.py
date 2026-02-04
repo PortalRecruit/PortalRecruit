@@ -152,6 +152,43 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # Player season stats (aggregated from play-type stats)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS player_season_stats (
+            player_id TEXT,
+            season_id TEXT,
+            team_id TEXT,
+            gp INTEGER,
+            possessions INTEGER,
+            points INTEGER,
+            fg_made INTEGER,
+            fg_miss INTEGER,
+            fg_attempt INTEGER,
+            fg_percent REAL,
+            fg_percent_effective REAL,
+            shot2_made INTEGER,
+            shot2_miss INTEGER,
+            shot2_attempt INTEGER,
+            shot2_percent REAL,
+            shot3_made INTEGER,
+            shot3_miss INTEGER,
+            shot3_attempt INTEGER,
+            shot3_percent REAL,
+            ft_made INTEGER,
+            ft_miss INTEGER,
+            ft_attempt INTEGER,
+            ft_percent REAL,
+            plus_one INTEGER,
+            shot_foul INTEGER,
+            score INTEGER,
+            turnover INTEGER,
+            updated_at TEXT,
+            PRIMARY KEY (player_id, season_id)
+        )
+        """
+    )
+
     trait_cols = [
         ("leadership_index", "REAL"),
         ("ato_rate", "REAL"),

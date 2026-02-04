@@ -142,3 +142,32 @@ class SynergyClient:
     def get_team_players(self, league_code, team_id):
         # Spec: GET /{league}/teams/{teamId}/players
         return self._get(f"/{league_code}/teams/{team_id}/players")
+
+    def get_player_playtype_stats(
+        self,
+        league_code,
+        season_id,
+        play_type,
+        team_id=None,
+        player_id=None,
+        defensive=None,
+        competition_definition_key=None,
+        skip=None,
+        take=512,
+    ):
+        # Spec: GET /{league}/seasons/{seasonId}/events/reports/playerplaytypestats
+        params = {
+            "playType": play_type,
+            "take": take,
+        }
+        if team_id:
+            params["teamId"] = team_id
+        if player_id:
+            params["playerId"] = player_id
+        if defensive is not None:
+            params["defensive"] = defensive
+        if competition_definition_key:
+            params["competitionDefinitionKey"] = competition_definition_key
+        if skip is not None:
+            params["skip"] = skip
+        return self._get(f"/{league_code}/seasons/{season_id}/events/reports/playerplaytypestats", params=params)
