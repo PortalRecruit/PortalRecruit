@@ -2,6 +2,8 @@ import sys
 import streamlit as st
 from pathlib import Path
 import zipfile
+import json
+import math
 
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
@@ -64,6 +66,29 @@ def render_header():
         """,
         unsafe_allow_html=True,
     )
+
+
+def _safe_float(val, default=0.0):
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+
+def _zscore(val, mean, std):
+    if std == 0:
+        return 0.0
+    return (val - mean) / std
+
+
+def _load_nba_archetypes():
+    path = REPO_ROOT / "data" / "nba_archetypes.json"
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return []
 
 # --- 4. MAIN APP LOGIC ---
 
@@ -365,6 +390,84 @@ elif st.session_state.app_mode == "Search":
             # Build display rows (filter by dog index + tags)
             from src.processing.play_tagger import tag_play  # noqa: E402
 
+            # Preload season stats + player names + full traits for similarity
+            player_stats = {}
+            player_names = {}
+            traits_all = {}
+            try:
+                conn2 = sqlite3.connect(DB_PATH)
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    """
+                    SELECT player_id, team_id, gp, possessions, points,
+                           fg_percent, shot2_percent, shot3_percent, ft_percent,
+                           fg_attempt, shot2_attempt, shot3_attempt, turnover
+                    FROM player_season_stats
+                    """
+                )
+                for r in cur2.fetchall():
+                    player_stats[r[0]] = {
+                        "team_id": r[1],
+                        "gp": r[2],
+                        "possessions": r[3],
+                        "points": r[4],
+                        "fg_percent": r[5],
+                        "shot2_percent": r[6],
+                        "shot3_percent": r[7],
+                        "ft_percent": r[8],
+                        "fg_attempt": r[9],
+                        "shot2_attempt": r[10],
+                        "shot3_attempt": r[11],
+                        "turnover": r[12],
+                    }
+                cur2.execute("SELECT player_id, full_name FROM players")
+                for r in cur2.fetchall():
+                    player_names[r[0]] = r[1]
+                cur2.execute(
+                    """
+                    SELECT player_id, dog_index, menace_index, unselfish_index,
+                           toughness_index, rim_pressure_index, shot_making_index, gravity_index, size_index,
+                           leadership_index, resilience_index, defensive_big_index, clutch_index, undervalued_index
+                    FROM player_traits
+                    """
+                )
+                for r in cur2.fetchall():
+                    traits_all[r[0]] = {
+                        "dog": r[1],
+                        "menace": r[2],
+                        "unselfish": r[3],
+                        "tough": r[4],
+                        "rim": r[5],
+                        "shot": r[6],
+                        "gravity": r[7],
+                        "size": r[8],
+                        "leadership": r[9],
+                        "resilience": r[10],
+                        "defensive_big": r[11],
+                        "clutch": r[12],
+                        "undervalued": r[13],
+                    }
+                conn2.close()
+            except Exception:
+                player_stats = {}
+                player_names = {}
+                traits_all = {}
+
+            # Build global means/stds for normalization
+            def _collect_vals(key):
+                vals = [v.get(key) for v in player_stats.values() if v.get(key) is not None]
+                return vals
+
+            stat_keys = [
+                "points", "possessions", "fg_percent", "shot3_percent", "ft_percent",
+                "fg_attempt", "shot2_attempt", "shot3_attempt", "turnover",
+            ]
+            stat_means = {k: (_safe_float(sum(_collect_vals(k))) / max(1, len(_collect_vals(k)))) for k in stat_keys}
+            stat_stds = {
+                k: math.sqrt(sum(((_safe_float(v) - stat_means[k]) ** 2) for v in _collect_vals(k)) / max(1, len(_collect_vals(k))))
+                for k in stat_keys
+            }
+
             rows = []
             for pid, desc, gid, clock, player_id, player_name in play_rows:
                 t = traits.get(player_id, {})
@@ -496,6 +599,91 @@ elif st.session_state.app_mode == "Search":
                     reason_parts = [s.lower() for s in strengths]
                 reason = " — ".join(reason_parts) if reason_parts else "solid all-around fit"
 
+                # Similar NCAA + NBA comps
+                sim_players = []
+                nba_floor = nba_ceiling = "—"
+                try:
+                    # Build player vector
+                    pstats = player_stats.get(player_id, {})
+                    height_in = _safe_float((t.get("size") or 0))
+                    weight_lb = _safe_float(0)
+                    try:
+                        # pull from players table if available in traits map (size only stored)
+                        pass
+                    except Exception:
+                        pass
+
+                    trait_vec = {
+                        "dog": _safe_float(dog_index),
+                        "menace": _safe_float(menace_index),
+                        "unselfish": _safe_float(unselfish_index),
+                        "tough": _safe_float(tough_index),
+                        "rim": _safe_float(rim_index),
+                        "shot": _safe_float(shot_index),
+                        "gravity": _safe_float(gravity_index),
+                        "leadership": _safe_float(t.get("leadership")),
+                        "resilience": _safe_float(t.get("resilience")),
+                        "defensive_big": _safe_float(t.get("defensive_big")),
+                        "clutch": _safe_float(t.get("clutch")),
+                        "undervalued": _safe_float(t.get("undervalued")),
+                    }
+
+                    def _sim_score(pid2):
+                        if pid2 == player_id:
+                            return -999
+                        ps2 = player_stats.get(pid2, {})
+                        # exclude same team
+                        if pstats.get("team_id") and ps2.get("team_id") == pstats.get("team_id"):
+                            return -999
+                        t2 = traits_all.get(pid2, {})
+
+                        # physical
+                        phys_dist = abs(_safe_float(t.get("size")) - _safe_float(t2.get("size"))) / 100.0
+
+                        # production
+                        prod_dist = 0.0
+                        for k in stat_keys:
+                            prod_dist += abs(
+                                _zscore(_safe_float(pstats.get(k)), stat_means[k], stat_stds[k])
+                                - _zscore(_safe_float(ps2.get(k)), stat_means[k], stat_stds[k])
+                            )
+                        prod_dist /= max(1, len(stat_keys))
+
+                        # traits
+                        trait_keys = ["dog", "menace", "unselfish", "tough", "rim", "shot", "gravity", "leadership", "resilience", "defensive_big", "clutch", "undervalued"]
+                        trait_dist = 0.0
+                        for k in trait_keys:
+                            trait_dist += abs(_safe_float(t.get(k)) - _safe_float(t2.get(k))) / 100.0
+                        trait_dist /= max(1, len(trait_keys))
+
+                        score = 1 / (1 + (0.35 * phys_dist + 0.35 * prod_dist + 0.30 * trait_dist))
+                        return score
+
+                    if traits_all:
+                        scores = sorted(((pid2, _sim_score(pid2)) for pid2 in traits_all.keys()), key=lambda x: x[1], reverse=True)
+                        sim_players = [player_names.get(pid2, "") for pid2, s in scores if s > 0][:2]
+
+                    # NBA comps from archetypes
+                    archetypes = _load_nba_archetypes()
+                    def _archetype_score(a):
+                        phys = abs((_safe_float(t.get("size")) - _safe_float(a.get("height_in", 0))) / 100.0)
+                        shot3 = abs(_safe_float(pstats.get("shot3_percent")) - _safe_float(a.get("shot3_percent", 0)))
+                        trait_dist = 0.0
+                        for k, v in (a.get("traits") or {}).items():
+                            trait_dist += abs(_safe_float(trait_vec.get(k)) / 100.0 - _safe_float(v) / 100.0)
+                        trait_dist /= max(1, len((a.get("traits") or {})))
+                        return 1 / (1 + phys + shot3 + trait_dist)
+
+                    if archetypes:
+                        floor_candidates = [a for a in archetypes if a.get("tier") == "floor"]
+                        ceil_candidates = [a for a in archetypes if a.get("tier") == "ceiling"]
+                        if floor_candidates:
+                            nba_floor = max(floor_candidates, key=_archetype_score).get("name")
+                        if ceil_candidates:
+                            nba_ceiling = max(ceil_candidates, key=_archetype_score).get("name")
+                except Exception:
+                    pass
+
                 # External profile links (search)
                 team = home if player_name and player_name in desc else home
                 q = f"{player_name or 'player'} {home} basketball"
@@ -509,6 +697,9 @@ elif st.session_state.app_mode == "Search":
                     "Why": reason,
                     "Strengths": ", ".join(strengths) if strengths else "—",
                     "Weaknesses": ", ".join(weaknesses) if weaknesses else "—",
+                    "Similar NCAA": ", ".join([s for s in sim_players if s]) if sim_players else "—",
+                    "NBA Floor": nba_floor or "—",
+                    "NBA Ceiling": nba_ceiling or "—",
                     "Profile": f"[ESPN]({espn_url}) | [NCAA]({ncaa_url})",
                     "Dog Index": dog_index,
                     "Menace": menace_index,
