@@ -4,7 +4,7 @@
 /* Custom local fonts (served from GitHub Pages: /www/custom_fonts) */
 @font-face {
   font-family: "Atrox";
-  src: url("/PortalRecruit/custom_fonts/ATROX.TTF") format("truetype");
+  src: url("/PortalRecruit/custom_fonts/ATROX.TTF?v=atrox1") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;

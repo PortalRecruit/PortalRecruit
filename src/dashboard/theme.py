@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 
-CSS_URL = "https://portalrecruit.github.io/PortalRecruit/streamlit.css"
+CSS_URL = "https://portalrecruit.github.io/PortalRecruit/streamlit.css?v=atrox1"
 BG_VIDEO_URL = "https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_ANIMATED_LOGO.mp4"
 
 
