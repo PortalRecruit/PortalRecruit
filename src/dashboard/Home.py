@@ -457,8 +457,9 @@ elif st.session_state.app_mode == "Search":
     name_resolution = _resolve_name_query(query)
     if name_resolution.get("mode") == "exact_single":
         st.session_state.profile_player_id = name_resolution["matches"][0]["player_id"]
-        _render_profile_overlay(st.session_state.profile_player_id)
-        st.stop()
+        if _get_player_profile(st.session_state.profile_player_id):
+            _render_profile_overlay(st.session_state.profile_player_id)
+            st.stop()
     elif name_resolution.get("mode") in {"exact_multi", "fuzzy_multi"}:
         st.markdown("### Did you mean")
         cols = st.columns(2)
@@ -1157,11 +1158,12 @@ elif st.session_state.app_mode == "Search":
                 for idx, (player, score, clip) in enumerate(top_players[:5]):
                     with cols[idx]:
                         pid = clip.get("Player ID")
-                        label = f"{player}\nScore: {score:.1f}\n{clip.get('Matchup','')}"
+                        label = f"{player}\n{meta}\nScore: {score:.1f}"
                         if pid and st.button(label, key=f"top5_{pid}", use_container_width=True):
                             st.session_state.profile_player_id = pid
-                            _render_profile_overlay(pid)
-                            st.stop()
+                            if _get_player_profile(pid):
+                                _render_profile_overlay(pid)
+                                st.stop()
 
                 st.markdown("### Results")
 
@@ -1171,8 +1173,9 @@ elif st.session_state.app_mode == "Search":
                     label = f"{player}\n{matchup}" if matchup else player
                     if pid and st.button(label, key=f"player_{pid}", use_container_width=True):
                         st.session_state.profile_player_id = pid
-                        _render_profile_overlay(pid)
-                        st.stop()
+                        if _get_player_profile(pid):
+                            _render_profile_overlay(pid)
+                            st.stop()
                     else:
                         st.markdown(f"## {player}")
                     # Plays shown in overlay only
