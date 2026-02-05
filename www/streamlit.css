@@ -202,7 +202,8 @@ input, textarea, select { border-radius: 12px !important; }
   background: #f8fafc !important;
   color: #0b1120 !important;
 }
-.stSelectbox [data-baseweb="select"] span {
+.stSelectbox [data-baseweb="select"] span,
+.stSelectbox [data-baseweb="select"] input {
   color: #0b1120 !important;
 }
 .stSelectbox [role="listbox"] {
@@ -210,6 +211,11 @@ input, textarea, select { border-radius: 12px !important; }
   color: #0b1120 !important;
 }
 .stSelectbox [role="option"] {
+  color: #0b1120 !important;
+  background: #f8fafc !important;
+}
+.stSelectbox [role="option"][aria-selected="true"] {
+  background: #e2e8f0 !important;
   color: #0b1120 !important;
 }
 .stSelectbox [role="option"]:hover {

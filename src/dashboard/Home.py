@@ -214,8 +214,14 @@ def _scout_breakdown(profile: dict) -> str:
     # cite plays
     plays = profile.get("plays", [])[:3]
     if plays:
-        cite = " "" + ""; "".join([p[1] for p in plays if p[1]]) + """
-        lines.append(f"Example clips: {cite}.")
+        cites = []
+        for p in plays:
+            pid = p[0]
+            desc = p[1]
+            if desc:
+                cites.append(f"[{desc[:80]}...] (#clip-{pid})")
+        if cites:
+            lines.append("Example clips: " + " ".join(cites))
 
     if not lines:
         lines.append(f"{name} profiles as a balanced contributor with a mix of skill and competitive traits.")
@@ -233,18 +239,22 @@ def _render_profile_overlay(player_id: str):
         st.markdown(f"## {title}")
         meta = []
         if profile.get("position"): meta.append(profile["position"])
+        if profile.get("height_in") and profile.get("weight_lb"):
+            meta.append(f"{profile['height_in']}in / {profile['weight_lb']}lb")
         if profile.get("class_year"): meta.append(f"Class: {profile['class_year']}")
-        if profile.get("team_id"): meta.append(f"Team ID: {profile['team_id']}")
+        if profile.get("team_id"): meta.append(f"Team: {profile['team_id']}")
         if meta:
             st.caption(" • ".join(meta))
 
         st.markdown("### Scout Breakdown")
         st.write(_scout_breakdown(profile))
 
-        # traits
+        # traits + strengths/weaknesses
         traits = profile.get("traits", {}) or {}
         if traits:
             st.markdown("### Traits")
+            strengths = []
+            weaknesses = []
             for key, label in [
                 ("dog_index", "Dog"),
                 ("menace_index", "Menace"),
@@ -258,15 +268,24 @@ def _render_profile_overlay(player_id: str):
                 val = traits.get(key)
                 if val is None:
                     continue
+                if val >= 70:
+                    strengths.append(label)
+                elif val <= 35:
+                    weaknesses.append(label)
                 st.progress(min(100, max(0, int(val))))
                 st.caption(f"{label}: {val:.1f}" if isinstance(val, (int, float)) else f"{label}: {val}")
+            if strengths:
+                st.markdown(f"**Strengths:** {', '.join(strengths[:4])}")
+            if weaknesses:
+                st.markdown(f"**Weaknesses:** {', '.join(weaknesses[:3])}")
 
-        # clips
+        # clips (anchors for citations)
         plays = profile.get("plays", [])
         matchups = profile.get("matchups", {})
         if plays:
             st.markdown("### Clips")
-            for play_id, desc, game_id, clock in plays[:10]:
+            for play_id, desc, game_id, clock in plays[:15]:
+                st.markdown(f"<a name='clip-{play_id}'></a>", unsafe_allow_html=True)
                 home, away = matchups.get(game_id, ("Unknown", "Unknown"))
                 st.markdown(f"**{home} vs {away}** @ {clock}")
                 st.write(desc)
@@ -716,6 +735,24 @@ elif st.session_state.app_mode == "Search":
             except Exception:
                 player_positions = {}
 
+            # Load player meta (name, team, height/weight)
+            player_meta = {}
+            try:
+                conn_meta = sqlite3.connect(DB_PATH)
+                cur_meta = conn_meta.cursor()
+                cur_meta.execute("SELECT player_id, full_name, position, team_id, height_in, weight_lb FROM players")
+                for r in cur_meta.fetchall():
+                    player_meta[r[0]] = {
+                        "full_name": r[1] or "",
+                        "position": r[2] or "",
+                        "team_id": r[3] or "",
+                        "height_in": r[4],
+                        "weight_lb": r[5],
+                    }
+                conn_meta.close()
+            except Exception:
+                player_meta = {}
+
             # Preload season stats + player names + full traits for similarity
             player_stats = {}
             player_names = {}
@@ -1060,6 +1097,10 @@ elif st.session_state.app_mode == "Search":
                     "Clock": clock,
                     "Player": (player_name or "Unknown"),
                     "Player ID": player_id,
+                    "Position": (player_meta.get(player_id, {}).get("position") if "player_meta" in locals() else ""),
+                    "Team": (player_meta.get(player_id, {}).get("team_id") if "player_meta" in locals() else ""),
+                    "Height": (player_meta.get(player_id, {}).get("height_in") if "player_meta" in locals() else None),
+                    "Weight": (player_meta.get(player_id, {}).get("weight_lb") if "player_meta" in locals() else None),
                     "Why": reason,
                     "Strengths": ", ".join(strengths) if strengths else "—",
                     "Weaknesses": ", ".join(weaknesses) if weaknesses else "—",
@@ -1134,19 +1175,6 @@ elif st.session_state.app_mode == "Search":
                         st.stop()
                     else:
                         st.markdown(f"## {player}")
-                    for r in clips[:3]:
-                        with st.container():
-                            st.markdown(f"**{r['Matchup']}** @ {r['Clock']}")
-                            st.caption(f"Tags: {r['Tags']} | Score: {r.get('Score', 0)}")
-                            st.write(r["Play"])
-                            st.caption(f"Why: {r.get('Why','')}")
-                            st.caption(f"Strengths: {r.get('Strengths','—')} | Weaknesses: {r.get('Weaknesses','—')}")
-                            st.markdown(r.get("Profile", ""), unsafe_allow_html=True)
-                            if r.get("Video") and r["Video"] != "-":
-                                try:
-                                    st.video(r["Video"])
-                                except Exception:
-                                    pass
-                            st.divider()
+                    # Plays shown in overlay only
             else:
                 st.info("No results after filters.")
