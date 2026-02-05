@@ -1158,6 +1158,12 @@ elif st.session_state.app_mode == "Search":
                 for idx, (player, score, clip) in enumerate(top_players[:5]):
                     with cols[idx]:
                         pid = clip.get("Player ID")
+                        pos = clip.get("Position", "")
+                        team = clip.get("Team", "")
+                        ht = clip.get("Height")
+                        wt = clip.get("Weight")
+                        size = f"{ht}in/{wt}lb" if ht and wt else ""
+                        meta = " | ".join([s for s in [pos, team, size] if s])
                         label = f"{player}\n{meta}\nScore: {score:.1f}"
                         if pid and st.button(label, key=f"top5_{pid}", use_container_width=True):
                             st.session_state.profile_player_id = pid
