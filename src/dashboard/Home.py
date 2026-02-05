@@ -62,6 +62,11 @@ def render_header():
         f"""
         <div class="pr-hero">
           <img src="{WORDMARK_DARK_URL}" style="max-width:560px; width:min(560px, 92vw); height:auto; object-fit:contain;" />
+          <div class="pr-hero-sub" style="font-family: var(--pr-font-body); font-size: 13px; max-width: 760px; line-height: 1.35;">
+            <strong>How to use:</strong> Describe the player you need in coach‑speak (e.g., “downhill guard who can guard”). Use filters to tighten the profile.
+            <br/>
+            <strong>How to read results:</strong> Top matches are ranked by semantic fit + trait alignment. Check the <em>Why</em>, <em>Strengths</em>, and tags to see the rationale.
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
