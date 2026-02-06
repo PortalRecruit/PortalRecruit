@@ -5,7 +5,9 @@ import zipfile
 import json
 import math
 import re
+import os
 from difflib import SequenceMatcher
+import requests
 
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
@@ -181,6 +183,54 @@ def _get_player_profile(player_id: str):
     return profile
 
 
+@st.cache_data(show_spinner=False)
+def _llm_scout_breakdown(profile: dict) -> str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return _scout_breakdown(profile)
+
+    name = profile.get("name", "Player")
+    traits = profile.get("traits", {}) or {}
+    stats = profile.get("stats", {}) or {}
+    plays = profile.get("plays", [])[:5]
+    clips = []
+    for play_id, desc, game_id, clock in plays:
+        if desc:
+            clips.append({"id": play_id, "desc": desc})
+
+    prompt = f"""
+You are a veteran college basketball recruiter. Write a concise, human, scout-style profile for {name}.
+Use the traits and stats below. Speak in coach-speak. Include 3–5 short citations that reference the clips list
+using the format [clip:ID].
+
+Traits: {traits}
+Stats: {stats}
+Clips: {clips}
+
+Write 1 short paragraph and end with a 1-sentence summary of fit.
+""".strip()
+
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": "You are a veteran college basketball recruiter."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.7,
+                "max_tokens": 260,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return _scout_breakdown(profile)
+
 def _scout_breakdown(profile: dict) -> str:
     name = profile.get("name", "Player")
     traits = profile.get("traits", {}) or {}
@@ -247,7 +297,9 @@ def _render_profile_overlay(player_id: str):
             st.caption(" • ".join(meta))
 
         st.markdown("### Scout Breakdown")
-        st.write(_scout_breakdown(profile))
+        breakdown = _llm_scout_breakdown(profile)
+        breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\\1)", breakdown)
+        st.write(breakdown)
 
         # traits + strengths/weaknesses
         traits = profile.get("traits", {}) or {}
