@@ -346,13 +346,13 @@ def _render_profile_overlay(player_id: str):
     if hasattr(st, "dialog"):
         with st.dialog("Player Profile"):
             if st.button("✕ Close", key="close_profile_top"):
-                st.session_state.profile_player_id = None
+                st.query_params.pop("player", None)
                 st.rerun()
             body()
     else:
         st.markdown("---")
         if st.button("✕ Close Profile", key="close_profile"):
-            st.session_state.profile_player_id = None
+            st.query_params.pop("player", None)
             st.rerun()
         body()
 
@@ -442,6 +442,12 @@ if st.session_state.app_mode == "Admin":
 elif st.session_state.app_mode == "Search":
     # ---------------- SEARCH VIEW ----------------
     render_header()
+
+    # Route to player profile page via query params
+    if "player" in st.query_params and st.query_params["player"]:
+        pid = st.query_params["player"]
+        _render_profile_overlay(pid)
+        st.stop()
     
     # This is where your Search UI lives. 
     # Ideally, put this in a separate file like `src/dashboard/search_ui.py` and import it.
@@ -508,9 +514,8 @@ elif st.session_state.app_mode == "Search":
     # Name-aware search routing
     name_resolution = _resolve_name_query(query)
     if name_resolution.get("mode") == "exact_single":
-        st.session_state.profile_player_id = name_resolution["matches"][0]["player_id"]
-        if _get_player_profile(st.session_state.profile_player_id):
-            st.rerun()
+        st.query_params["player"] = name_resolution["matches"][0]["player_id"]
+        st.rerun()
     elif name_resolution.get("mode") in {"exact_multi", "fuzzy_multi"}:
         st.markdown("### Did you mean")
         cols = st.columns(2)
@@ -1232,7 +1237,7 @@ elif st.session_state.app_mode == "Search":
                     meta = " | ".join([s for s in [pos, team, size] if s])
                     label = f"{player}\n{meta}\nScore: {clips[0].get('Score',0):.1f}" if clips else player
                     if pid and st.button(label, key=f"player_{pid}", use_container_width=True):
-                        st.session_state.profile_player_id = pid
+                        st.query_params["player"] = pid
                         st.rerun()
                     # Plays shown in overlay only
             else:
