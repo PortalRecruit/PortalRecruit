@@ -137,6 +137,33 @@ def _lookup_player_id_by_name(name: str):
     except Exception:
         return None
 
+
+
+def _get_qp():
+    try:
+        return st.experimental_get_query_params()
+    except Exception:
+        return dict(st.query_params)
+
+
+def _set_qp(**kwargs):
+    try:
+        st.experimental_set_query_params(**kwargs)
+    except Exception:
+        for k,v in kwargs.items():
+            st.query_params[k] = v
+
+
+def _clear_qp(key):
+    try:
+        params = st.experimental_get_query_params()
+        params.pop(key, None)
+        st.experimental_set_query_params(**params)
+    except Exception:
+        try:
+            st.query_params.pop(key, None)
+        except Exception:
+            pass
 def _get_player_profile(player_id: str):
     import sqlite3
     profile = {}
@@ -362,13 +389,13 @@ def _render_profile_overlay(player_id: str):
     if hasattr(st, "dialog"):
         with st.dialog("Player Profile"):
             if st.button("✕ Close", key="close_profile_top"):
-                st.query_params.pop("player", None)
+                _clear_qp("player")
                 st.rerun()
             body()
     else:
         st.markdown("---")
         if st.button("✕ Close Profile", key="close_profile"):
-            st.query_params.pop("player", None)
+            _clear_qp("player")
             st.rerun()
         body()
 
@@ -460,13 +487,14 @@ elif st.session_state.app_mode == "Search":
     render_header()
 
     # Route to player profile page via query params
-    if "player" in st.query_params and st.query_params["player"]:
-        pid = st.query_params["player"]
+    qp = _get_qp()
+    if "player" in qp and qp["player"]:
+        pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
         if _get_player_profile(pid):
             _render_profile_overlay(pid)
             st.stop()
         else:
-            st.query_params.pop("player", None)
+            _clear_qp("player")
             st.warning("Player not found.")
     
     # This is where your Search UI lives. 
@@ -534,7 +562,7 @@ elif st.session_state.app_mode == "Search":
     # Name-aware search routing
     name_resolution = _resolve_name_query(query)
     if name_resolution.get("mode") == "exact_single":
-        st.query_params["player"] = name_resolution["matches"][0]["player_id"]
+        _set_qp(player=name_resolution["matches"][0]["player_id"])
         st.rerun()
     elif name_resolution.get("mode") in {"exact_multi", "fuzzy_multi"}:
         st.markdown("### Did you mean")
