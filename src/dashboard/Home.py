@@ -123,18 +123,40 @@ def _resolve_name_query(query: str):
 
 
 @st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
 def _lookup_player_id_by_name(name: str):
+    name = (name or "").strip()
     if not name:
         return None
+
+    cols = _players_table_columns()
+    if not cols:
+        return None
+
+    import sqlite3
     try:
-        import sqlite3
         con = sqlite3.connect(DB_PATH)
         cur = con.cursor()
-        cur.execute("SELECT player_id FROM players WHERE full_name = ? LIMIT 1", (name,))
+        # Exact match first (fast + deterministic)
+        cur.execute(f"SELECT {cols['id']} FROM players WHERE {cols['name']} = ? LIMIT 1", (name,))
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            con.close()
+            return _normalize_player_id(row[0])
+
+        # Fallback: case-insensitive match (helps when upstream title-cases, etc.)
+        cur.execute(
+            f"SELECT {cols['id']} FROM players WHERE LOWER({cols['name']}) = LOWER(?) LIMIT 1",
+            (name,),
+        )
         row = cur.fetchone()
         con.close()
-        return row[0] if row else None
+        return _normalize_player_id(row[0]) if row and row[0] is not None else None
     except Exception:
+        try:
+            con.close()
+        except Exception:
+            pass
         return None
 
 
@@ -165,164 +187,90 @@ def _clear_qp(key):
         except Exception:
             pass
 def _get_player_profile(player_id: str):
+    'Fetch player profile with ID normalization and fallbacks.'
     import sqlite3
-    profile = {}
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute("SELECT player_id, full_name, position, team_id, class_year, height_in, weight_lb FROM players WHERE player_id=?", (player_id,))
-    row = cur.fetchone()
-    if not row:
-        con.close()
+
+    pid = _normalize_player_id(player_id)
+    if not pid:
         return None
-    profile.update({
-        "player_id": row[0],
-        "name": row[1],
-        "position": row[2],
-        "team_id": row[3],
-        "class_year": row[4],
-        "height_in": row[5],
-        "weight_lb": row[6],
-    })
-    # traits
-    cur.execute("SELECT * FROM player_traits WHERE player_id=?", (player_id,))
-    trow = cur.fetchone()
-    traits = {}
-    if trow:
-        cols = [d[0] for d in cur.description]
-        traits = dict(zip(cols, trow))
-    profile["traits"] = traits
 
-    # season stats
-    cur.execute("SELECT gp, possessions, points, fg_percent, shot3_percent, ft_percent, turnover FROM player_season_stats WHERE player_id=?", (player_id,))
-    srow = cur.fetchone()
-    if srow:
-        profile["stats"] = {
-            "gp": srow[0],
-            "possessions": srow[1],
-            "points": srow[2],
-            "fg_percent": srow[3],
-            "shot3_percent": srow[4],
-            "ft_percent": srow[5],
-            "turnover": srow[6],
-        }
-    else:
-        profile["stats"] = {}
+    cols = _players_table_columns()
+    if not cols:
+        return None
 
-    # plays
-    cur.execute("SELECT play_id, description, game_id, clock_display FROM plays WHERE player_id=? LIMIT 25", (player_id,))
-    plays = cur.fetchall()
-    profile["plays"] = plays
-
-    # matchups
-    game_ids = list({p[2] for p in plays})
-    matchups = {}
-    if game_ids:
-        ph = ",".join(["?"] * len(game_ids))
-        cur.execute(f"SELECT game_id, home_team, away_team FROM games WHERE game_id IN ({ph})", game_ids)
-        matchups = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
-    profile["matchups"] = matchups
-
-    con.close()
-    return profile
-
-
-@st.cache_data(show_spinner=False)
-def _llm_scout_breakdown(profile: dict) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return _scout_breakdown(profile)
-
-    name = profile.get("name", "Player")
-    traits = profile.get("traits", {}) or {}
-    stats = profile.get("stats", {}) or {}
-    plays = profile.get("plays", [])[:5]
-    clips = []
-    for play_id, desc, game_id, clock in plays:
-        if desc:
-            clips.append({"id": play_id, "desc": desc})
-
-    prompt = f"""
-You are a veteran college basketball recruiter. Write a concise, human, scout-style profile for {name}.
-Use the traits and stats below. Speak in coach-speak. Include 3â5 short citations that reference the clips list
-using the format [clip:ID].
-
-Traits: {traits}
-Stats: {stats}
-Clips: {clips}
-
-Write 1 short paragraph and end with a 1-sentence summary of fit.
-""".strip()
+    def fetch_by_id(cur, pid_value):
+        cur.execute(
+            "SELECT {id_col}, {name_col}, {pos_col}, {team_col}, {class_col}, {ht_col}, {wt_col} FROM players WHERE {id_col} = ? LIMIT 1".format(
+                id_col=cols["id"],
+                name_col=cols["name"],
+                pos_col=cols["position"] or "NULL",
+                team_col=cols["team_id"] or "NULL",
+                class_col=cols["class_year"] or "NULL",
+                ht_col=cols["height_in"] or "NULL",
+                wt_col=cols["weight_lb"] or "NULL",
+            ),
+            (pid_value,),
+        )
+        return cur.fetchone()
 
     try:
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": "You are a veteran college basketball recruiter."},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.7,
-                "max_tokens": 260,
-            },
-            timeout=20,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        con = sqlite3.connect(DB_PATH)
+        cur = con.cursor()
+
+        # Attempt 1: as normalized string
+        row = fetch_by_id(cur, pid)
+
+        # Attempt 2: as int (if numeric)
+        if not row and pid.isdigit():
+            row = fetch_by_id(cur, int(pid))
+
+        # Attempt 3: original raw (sometimes includes prefixes)
+        if not row and player_id is not None:
+            row = fetch_by_id(cur, str(player_id))
+
+        if not row:
+            con.close()
+            return None
+
+        profile = {
+            "player_id": _normalize_player_id(row[0]),
+            "name": row[1],
+            "position": row[2] if cols.get("position") else None,
+            "team_id": row[3] if cols.get("team_id") else None,
+            "class_year": row[4] if cols.get("class_year") else None,
+            "height_in": row[5] if cols.get("height_in") else None,
+            "weight_lb": row[6] if cols.get("weight_lb") else None,
+        }
+        con.close()
+        return profile
     except Exception:
-        return _scout_breakdown(profile)
+        try:
+            con.close()
+        except Exception:
+            pass
+        return None
 
-def _scout_breakdown(profile: dict) -> str:
-    name = profile.get("name", "Player")
-    traits = profile.get("traits", {}) or {}
-    strengths = []
-    weaknesses = []
-    # simple trait extraction
-    trait_map = [
-        ("dog_index", "dog mentality"),
-        ("menace_index", "defensive menace"),
-        ("unselfish_index", "unselfish playmaking"),
-        ("toughness_index", "tough, competitive edge"),
-        ("rim_pressure_index", "rim pressure"),
-        ("shot_making_index", "shot making"),
-        ("size_index", "size/length"),
-    ]
-    for key, label in trait_map:
-        val = traits.get(key)
-        if val is None:
-            continue
-        if val >= 70:
-            strengths.append(label)
-        elif val <= 35:
-            weaknesses.append(label)
-
-    lines = []
-    if strengths:
-        lines.append(f"{name} consistently shows **{', '.join(strengths[:3])}** on film and in the data.")
-    if weaknesses:
-        lines.append(f"Primary growth areas: **{', '.join(weaknesses[:2])}**.")
-
-    # cite plays
-    plays = profile.get("plays", [])[:3]
-    if plays:
-        cites = []
-        for p in plays:
-            pid = p[0]
-            desc = p[1]
-            if desc:
-                cites.append(f"[{desc[:80]}...] (#clip-{pid})")
-        if cites:
-            lines.append("Example clips: " + " ".join(cites))
-
-    if not lines:
-        lines.append(f"{name} profiles as a balanced contributor with a mix of skill and competitive traits.")
-    return " ".join(lines)
 
 
 def _render_profile_overlay(player_id: str):
-    profile = _get_player_profile(player_id)
+    pid = _normalize_player_id(player_id)
+    profile = _get_player_profile(pid)
+
+    # Fallback: use metadata captured from the current search results
+    if not profile:
+        cache = st.session_state.get("player_meta_cache", {}) or {}
+        meta = cache.get(pid) if pid else None
+        if meta:
+            profile = {
+                "player_id": pid,
+                "name": meta.get("name") or meta.get("player") or "Player Profile",
+                "position": meta.get("position"),
+                "team_id": meta.get("team_id") or meta.get("team"),
+                "class_year": meta.get("class_year"),
+                "height_in": meta.get("height_in") or meta.get("height"),
+                "weight_lb": meta.get("weight_lb") or meta.get("weight"),
+            }
+
     if not profile:
         st.warning("Player not found.")
         return
@@ -430,6 +378,75 @@ def _safe_float(val, default=0.0):
         return default
 
 
+def _normalize_player_id(pid):
+    'Normalize player IDs from different sources for stable SQLite lookup.'
+    if pid is None:
+        return None
+    try:
+        # Handle streamlit query_params list values
+        if isinstance(pid, (list, tuple)) and pid:
+            pid = pid[0]
+    except Exception:
+        pass
+    try:
+        # Common case: numeric id accidentally parsed as float (e.g., 12345.0)
+        if isinstance(pid, float):
+            if pid.is_integer():
+                return str(int(pid))
+            return str(pid).strip()
+    except Exception:
+        pass
+    s = str(pid).strip()
+    if not s:
+        return None
+    # Strip ".0" if present from CSV/JSON float conversions
+    if re.match(r"^\d+\.0$", s):
+        s = s.split(".", 1)[0]
+    return s
+
+
+@st.cache_data(show_spinner=False)
+def _players_table_columns():
+    'Detect players table schema; returns resolved column names or None.'
+    import sqlite3
+    try:
+        con = sqlite3.connect(DB_PATH)
+        cur = con.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='players'")
+        if not cur.fetchone():
+            con.close()
+            return None
+        cur.execute("PRAGMA table_info(players)")
+        cols = [r[1] for r in cur.fetchall()]
+        con.close()
+    except Exception:
+        try:
+            con.close()
+        except Exception:
+            pass
+        return None
+
+    def pick(candidates):
+        for c in candidates:
+            if c in cols:
+                return c
+        return None
+
+    resolved = {
+        "id": pick(["player_id", "id", "playerId", "playerID"]),
+        "name": pick(["full_name", "name", "player_name", "playerName"]),
+        "position": pick(["position", "pos"]),
+        "team_id": pick(["team_id", "teamId", "team"]),
+        "class_year": pick(["class_year", "class", "year"]),
+        "height_in": pick(["height_in", "height", "height_inches"]),
+        "weight_lb": pick(["weight_lb", "weight", "weight_lbs"]),
+    }
+    # Must have at least id + name to be useful
+    if not resolved["id"] or not resolved["name"]:
+        return None
+    return resolved
+
+
 def _zscore(val, mean, std):
     if std == 0:
         return 0.0
@@ -489,13 +506,16 @@ elif st.session_state.app_mode == "Search":
     # Route to player profile page via query params
     qp = _get_qp()
     if "player" in qp and qp["player"]:
-        pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
-        if _get_player_profile(pid):
+        raw_pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
+        pid = _normalize_player_id(raw_pid)
+
+        # If profile exists in DB or is available from last search metadata, show it.
+        if _get_player_profile(pid) or (st.session_state.get("player_meta_cache", {}) or {}).get(pid):
             _render_profile_overlay(pid)
             st.stop()
-        else:
-            _clear_qp("player")
-            st.warning("Player not found.")
+
+        _clear_qp("player")
+        st.warning("Player not found.")
     
     # This is where your Search UI lives. 
     # Ideally, put this in a separate file like `src/dashboard/search_ui.py` and import it.
@@ -1261,7 +1281,17 @@ elif st.session_state.app_mode == "Search":
                 cols = st.columns(5)
                 for idx, (player, score, clip) in enumerate(top_players[:5]):
                     with cols[idx]:
-                        pid = clip.get("Player ID")
+                        pid = _normalize_player_id(clip.get("Player ID"))
+                        st.session_state.setdefault("player_meta_cache", {})
+                        if pid:
+                            st.session_state["player_meta_cache"][pid] = {
+                                "name": player,
+                                "position": clip.get("Position", ""),
+                                "team": clip.get("Team", ""),
+                                "height": clip.get("Height"),
+                                "weight": clip.get("Weight"),
+                            }
+
                         pos = clip.get("Position", "")
                         team = clip.get("Team", "")
                         ht = clip.get("Height")
@@ -1269,14 +1299,28 @@ elif st.session_state.app_mode == "Search":
                         size = f"{ht}in/{wt}lb" if ht and wt else ""
                         meta = " | ".join([s for s in [pos, team, size] if s])
                         label = f"{player}\n{meta}\nScore: {score:.1f}"
-                        if pid and st.button(label, key=f"top5_{pid}", use_container_width=True):
-                            st.session_state.profile_player_id = pid
-                            st.rerun()
+                        top5_key = f"top5_{pid}" if pid else "top5_" + re.sub(r"[^a-zA-Z0-9]+", "_", player)[:50]
+                        if st.button(label, key=top5_key, use_container_width=True):
+                            if not pid:
+                                pid = _lookup_player_id_by_name(player)
+                            if pid:
+                                st.session_state.profile_player_id = _normalize_player_id(pid)
+                                st.rerun()
 
                 st.markdown("### Results")
 
                 for player, clips in grouped.items():
-                    pid = clips[0].get("Player ID") if clips else None
+                    pid = _normalize_player_id(clips[0].get("Player ID")) if clips else None
+                    st.session_state.setdefault("player_meta_cache", {})
+                    if pid:
+                        st.session_state["player_meta_cache"][pid] = {
+                            "name": player,
+                            "position": clips[0].get("Position", "") if clips else "",
+                            "team": clips[0].get("Team", "") if clips else "",
+                            "height": clips[0].get("Height") if clips else None,
+                            "weight": clips[0].get("Weight") if clips else None,
+                        }
+
                     pos = clips[0].get("Position", "") if clips else ""
                     team = clips[0].get("Team", "") if clips else ""
                     ht = clips[0].get("Height") if clips else None
@@ -1284,11 +1328,12 @@ elif st.session_state.app_mode == "Search":
                     size = f"{ht}in/{wt}lb" if ht and wt else ""
                     meta = " | ".join([s for s in [pos, team, size] if s])
                     label = f"{player}\n{meta}\nScore: {clips[0].get('Score',0):.1f}" if clips else player
-                    if st.button(label, key=f"player_{pid}", use_container_width=True):
+                    button_key = f"player_{pid}" if pid else "player_" + re.sub(r"[^a-zA-Z0-9]+", "_", player)[:50]
+                    if st.button(label, key=button_key, use_container_width=True):
                         if not pid:
                             pid = _lookup_player_id_by_name(player)
                         if pid:
-                            st.query_params["player"] = pid
+                            st.query_params["player"] = _normalize_player_id(pid)
                             st.rerun()
                     # Plays shown in overlay only
             else:
