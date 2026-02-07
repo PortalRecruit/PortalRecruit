@@ -464,15 +464,16 @@ def _render_profile_overlay(player_id: str):
         score = meta_cache.get("score")
 
         meta = []
-        if profile.get("position"): meta.append(f"Position: {profile['position']}")
+        if profile.get("position"):
+            meta.append(f"{profile['position']}")
         if profile.get("height_in") and profile.get("weight_lb"):
-            meta.append(f"Ht/Wt: {profile['height_in']}\" / {profile['weight_lb']} lbs")
+            meta.append(f"{_fmt_height(profile['height_in'])} / {int(profile['weight_lb'])} lbs")
         if profile.get("team_id"):
             team_label = str(profile["team_id"])
             if not (len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label):
-                meta.append(f"School: {team_label}")
+                meta.append(team_label)
         if score is not None:
-            meta.append(f"Score: {score:.1f}")
+            meta.append(f"Recruit Score: {score:.1f}")
         if meta:
             st.caption(" • ".join(meta))
 
@@ -628,6 +629,18 @@ def _safe_float(val, default=0.0):
         return float(val)
     except Exception:
         return default
+
+
+def _fmt_height(height_in):
+    try:
+        inches = int(round(float(height_in)))
+    except Exception:
+        return "—"
+    if inches <= 0:
+        return "—"
+    ft = inches // 12
+    inch = inches % 12
+    return f"{ft}'{inch}\""
 
 
 def _normalize_player_id(pid):
@@ -1569,11 +1582,11 @@ elif st.session_state.app_mode == "Search":
                     wt = clips[0].get("Weight") if clips else None
                     pos = pos if pos not in [None, "", "None"] else "—"
                     team = team if team not in [None, "", "None"] else "—"
-                    size = f"{ht}\" / {wt} lbs" if ht and wt else "—"
+                    size = f"{_fmt_height(ht)} / {int(wt)} lbs" if ht and wt else "—"
 
                     label = (
                         f"{player}\n"
-                        f"Position: {pos} | Ht/Wt: {size} | School: {team} | Score: {score:.1f}"
+                        f"{pos} | {size} | {team} | Recruit Score: {score:.1f}"
                     )
 
                     if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
