@@ -61,7 +61,7 @@ def main() -> None:
     if not path.exists():
         raise FileNotFoundError(path)
 
-    lines = _load_lines(path)
+    raw = path.read_text(encoding="utf-8", errors="ignore").replace("\u2019", "'")
     conn = connect_db()
     ensure_schema(conn)
     cur = conn.cursor()
@@ -79,91 +79,95 @@ def main() -> None:
     updated_stats = 0
     inserted_players = 0
     inserted_stats = 0
-    current_team = None
 
-    player_re = re.compile(r"^([A-Za-z\'\-\.\s]+?),\s+([A-Za-z\'\-\.\s]+)\s+(.+)$")
     stats_re = re.compile(r"([0-9.]+)\s+Pts,\s+([0-9.]+)\s+Reb,\s+([0-9.]+)\s+Ast")
+    name_re = re.compile(r"([A-Za-z\'\-\.\s]+?),\s+([A-Za-z\'\-\.\s]+)\s+")
 
-    for line in lines:
-        for header, team in TEAM_HEADERS.items():
-            if line.startswith(header):
-                current_team = team
-                break
-        if current_team is None:
-            continue
+    # Find team sections
+    header_positions = []
+    for header, team in TEAM_HEADERS.items():
+        idx = raw.find(header)
+        if idx != -1:
+            header_positions.append((idx, header, team))
+    header_positions.sort(key=lambda x: x[0])
 
-        m = player_re.match(line)
-        if not m:
-            continue
+    for i, (start, header, team) in enumerate(header_positions):
+        end = header_positions[i + 1][0] if i + 1 < len(header_positions) else len(raw)
+        section = raw[start:end]
 
-        last, first, rest = m.groups()
-        full_name = f"{first.strip()} {last.strip()}"
+        # Find player name spans inside section
+        matches = list(name_re.finditer(section))
+        for j, m in enumerate(matches):
+            last = m.group(1).strip()
+            first = m.group(2).strip()
+            full_name = f"{first} {last}"
+            seg_start = m.end()
+            seg_end = matches[j + 1].start() if j + 1 < len(matches) else len(section)
+            rest = section[seg_start:seg_end].strip()
 
-        # Extract stats if present
-        stats_match = stats_re.search(rest)
-        if stats_match:
-            ppg, rpg, apg = map(float, stats_match.groups())
-            hs = rest[: stats_match.start()].strip()
-        else:
-            ppg = rpg = apg = 0.0
-            hs = rest.strip()
+            # Extract stats if present
+            stats_match = stats_re.search(rest)
+            if stats_match:
+                ppg, rpg, apg = map(float, stats_match.groups())
+                hs = rest[: stats_match.start()].strip()
+            else:
+                ppg = rpg = apg = 0.0
+                hs = rest.strip()
 
-        # Remove trailing parenthetical notes from high school
-        hs = re.sub(r"\([^)]*\)$", "", hs).strip()
+            # Remove trailing parenthetical notes from high school
+            hs = re.sub(r"\([^)]*\)$", "", hs).strip()
 
-        key = (_norm_name(full_name), current_team)
-        pid = name_team_to_id.get(key)
-        if not pid:
-            # fallback: ignore team mismatch by name only
-            for (name_key, team_key), pid_val in name_team_to_id.items():
-                if name_key == _norm_name(full_name):
-                    pid = pid_val
-                    break
+            key = (_norm_name(full_name), team)
+            pid = name_team_to_id.get(key)
+            if not pid:
+                # fallback: ignore team mismatch by name only
+                for (name_key, team_key), pid_val in name_team_to_id.items():
+                    if name_key == _norm_name(full_name):
+                        pid = pid_val
+                        break
 
-        if not pid:
-            pid = f"acc_roster_{_slug(current_team)}_{_slug(full_name)}"
-            first_name = first.strip()
-            last_name = last.strip()
+            if not pid:
+                pid = f"acc_roster_{_slug(team)}_{_slug(full_name)}"
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO players
+                    (player_id, team_id, first_name, last_name, full_name, high_school)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (pid, team, first, last, full_name, hs or None),
+                )
+                if cur.rowcount:
+                    inserted_players += 1
+            else:
+                cur.execute(
+                    """
+                    UPDATE players
+                    SET high_school = COALESCE(?, high_school),
+                        team_id = COALESCE(?, team_id)
+                    WHERE player_id = ?
+                    """,
+                    (hs or None, team, pid),
+                )
+                if cur.rowcount:
+                    updated_players += 1
+
+            # Upsert season stats
             cur.execute(
                 """
-                INSERT OR IGNORE INTO players
-                (player_id, team_id, first_name, last_name, full_name, high_school)
+                INSERT INTO player_season_stats (player_id, season_id, team_id, ppg, rpg, apg)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(player_id, season_id) DO UPDATE SET
+                    team_id=excluded.team_id,
+                    ppg=excluded.ppg,
+                    rpg=excluded.rpg,
+                    apg=excluded.apg
                 """,
-                (pid, current_team, first_name, last_name, full_name, hs or None),
+                (pid, args.season, team, ppg, rpg, apg),
             )
             if cur.rowcount:
-                inserted_players += 1
-        else:
-            cur.execute(
-                """
-                UPDATE players
-                SET high_school = COALESCE(?, high_school),
-                    team_id = COALESCE(?, team_id)
-                WHERE player_id = ?
-                """,
-                (hs or None, current_team, pid),
-            )
-            if cur.rowcount:
-                updated_players += 1
-
-        # Upsert season stats
-        cur.execute(
-            """
-            INSERT INTO player_season_stats (player_id, season_id, team_id, ppg, rpg, apg)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(player_id, season_id) DO UPDATE SET
-                team_id=excluded.team_id,
-                ppg=excluded.ppg,
-                rpg=excluded.rpg,
-                apg=excluded.apg
-            """,
-            (pid, args.season, current_team, ppg, rpg, apg),
-        )
-        if cur.rowcount:
-            inserted_stats += 1
-        else:
-            updated_stats += 1
+                inserted_stats += 1
+            else:
+                updated_stats += 1
 
     conn.commit()
     conn.close()
