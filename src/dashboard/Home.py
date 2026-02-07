@@ -408,7 +408,7 @@ Clips: {clips}
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-5-nano",
                 "messages": [
                     {"role": "system", "content": "You are a veteran college basketball recruiter."},
                     {"role": "user", "content": prompt},
