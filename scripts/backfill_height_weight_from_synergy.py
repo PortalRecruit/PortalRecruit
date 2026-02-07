@@ -28,9 +28,20 @@ def _unwrap_list(payload) -> list[dict]:
     if isinstance(payload, dict):
         data = payload.get("data") or payload.get("items") or payload.get("result")
         if isinstance(data, dict):
-            data = data.get("items") or data.get("data")
+            # handle nested {data:{...}} or {items:[...]}
+            if "items" in data or "data" in data:
+                data = data.get("items") or data.get("data")
+            else:
+                return [data]
         if isinstance(data, list):
-            return [p for p in data if isinstance(p, dict)]
+            # Some APIs wrap each item as {data:{...}}
+            cleaned = []
+            for item in data:
+                if isinstance(item, dict) and "data" in item and isinstance(item["data"], dict):
+                    cleaned.append(item["data"])
+                elif isinstance(item, dict):
+                    cleaned.append(item)
+            return cleaned
     return []
 
 
