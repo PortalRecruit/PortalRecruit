@@ -767,19 +767,26 @@ elif st.session_state.app_mode == "Search":
 
         # Query using pre-encoded normalized embedding for stable retrieval quality.
         query_vector = encode_query(expanded_query)
-        results = collection.query(
-            query_embeddings=[query_vector],
-            n_results=n_results,
-            include=["documents", "distances", "metadatas"],
-        )
 
-        # Cross-encoder re-rank + blend with vector similarity and tag overlap.
-        ids = results.get("ids", [[]])[0]
-        docs = results.get("documents", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
+        # Initialize defaults to prevent UnboundLocalError
+        ids = []
+        docs = []
+        distances = []
+        metadatas = []
+        play_ids = []
 
         try:
+            results = collection.query(
+                query_embeddings=[query_vector],
+                n_results=n_results,
+                include=["documents", "distances", "metadatas"],
+            )
+
+            ids = results.get("ids", [[]])[0]
+            docs = results.get("documents", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+            metadatas = results.get("metadatas", [[]])[0]
+
             if docs and ids:
                 cross = get_cross_encoder()
                 pairs = [[expanded_query, d] for d in docs]
@@ -797,7 +804,7 @@ elif st.session_state.app_mode == "Search":
             else:
                 play_ids = ids
         except Exception:
-            play_ids = ids
+            play_ids = ids if ids else []
 
         if not play_ids:
             st.warning("No results found.")
