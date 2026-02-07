@@ -625,6 +625,7 @@ elif st.session_state.app_mode == "Search":
         role_hints = set()
         explain = []
         matched_phrases = []
+        apply_exclude = any(tok in q_lower for tok in [" no ", "avoid", "without", "dont", "don't", "not "])
         leadership_intent = "leadership" in intents
         resilience_intent = "resilience" in intents
         defensive_big_intent = "defensive_big" in intents
@@ -999,7 +1000,7 @@ elif st.session_state.app_mode == "Search":
                 play_tags = tag_play(desc)
                 if "non_possession" in play_tags:
                     continue
-                if exclude_tags and set(play_tags).intersection(exclude_tags):
+                if apply_exclude and exclude_tags and set(play_tags).intersection(exclude_tags):
                     continue
                 # Only hard-filter by user-selected Required Tags
                 if required_tags and not set(required_tags).issubset(set(play_tags)):
