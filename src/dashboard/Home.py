@@ -995,6 +995,9 @@ elif st.session_state.app_mode == "Search":
 
         expanded_query = build_expanded_query(query, matched_phrases)
 
+        status = st.status("Searching…", expanded=False)
+        status.update(state="running")
+
         # semantic_search handles fast candidate expansion + reranking.
         play_ids = semantic_search(
             collection,
@@ -1005,8 +1008,10 @@ elif st.session_state.app_mode == "Search":
         )
 
         if not play_ids:
+            status.update(state="complete", label="Search complete")
             st.warning("No results found.")
         else:
+            status.update(state="complete", label="Search complete")
             conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
 
