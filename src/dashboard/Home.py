@@ -217,7 +217,7 @@ def _get_player_profile(player_id: str):
 
     def fetch_by_id(cur, pid_value):
         cur.execute(
-            "SELECT {id_col}, {name_col}, {pos_col}, {team_col}, {class_col}, {ht_col}, {wt_col} FROM players WHERE {id_col} = ? LIMIT 1".format(
+            "SELECT {id_col}, {name_col}, {pos_col}, {team_col}, {class_col}, {ht_col}, {wt_col}, {hs_col} FROM players WHERE {id_col} = ? LIMIT 1".format(
                 id_col=cols["id"],
                 name_col=cols["name"],
                 pos_col=cols["position"] or "NULL",
@@ -225,6 +225,7 @@ def _get_player_profile(player_id: str):
                 class_col=cols["class_year"] or "NULL",
                 ht_col=cols["height_in"] or "NULL",
                 wt_col=cols["weight_lb"] or "NULL",
+                hs_col=cols["high_school"] or "NULL",
             ),
             (pid_value,),
         )
@@ -250,6 +251,7 @@ def _get_player_profile(player_id: str):
             "class_year": row[4] if cols.get("class_year") else None,
             "height_in": row[5] if cols.get("height_in") else None,
             "weight_lb": row[6] if cols.get("weight_lb") else None,
+            "high_school": row[7] if cols.get("high_school") else None,
         }
 
         # traits
@@ -264,32 +266,38 @@ def _get_player_profile(player_id: str):
         # season stats
         cur.execute(
             """
-            SELECT gp, possessions, points, fg_made, shot3_made, ft_made,
+            SELECT season_id, gp, possessions, points, fg_made, shot3_made, ft_made,
                    fg_percent, shot3_percent, ft_percent, turnover,
-                   minutes, reb, ast, stl, blk
+                   minutes, reb, ast, stl, blk, ppg, rpg, apg
             FROM player_season_stats
             WHERE player_id = ?
+            ORDER BY season_id DESC
+            LIMIT 1
             """,
             (pid,),
         )
         srow = cur.fetchone()
         if srow:
             profile["stats"] = {
-                "gp": srow[0],
-                "possessions": srow[1],
-                "points": srow[2],
-                "fg_made": srow[3],
-                "shot3_made": srow[4],
-                "ft_made": srow[5],
-                "fg_percent": srow[6],
-                "shot3_percent": srow[7],
-                "ft_percent": srow[8],
-                "turnover": srow[9],
-                "minutes": srow[10],
-                "reb": srow[11],
-                "ast": srow[12],
-                "stl": srow[13],
-                "blk": srow[14],
+                "season_id": srow[0],
+                "gp": srow[1],
+                "possessions": srow[2],
+                "points": srow[3],
+                "fg_made": srow[4],
+                "shot3_made": srow[5],
+                "ft_made": srow[6],
+                "fg_percent": srow[7],
+                "shot3_percent": srow[8],
+                "ft_percent": srow[9],
+                "turnover": srow[10],
+                "minutes": srow[11],
+                "reb": srow[12],
+                "ast": srow[13],
+                "stl": srow[14],
+                "blk": srow[15],
+                "ppg": srow[16],
+                "rpg": srow[17],
+                "apg": srow[18],
             }
         else:
             profile["stats"] = {}
@@ -444,6 +452,7 @@ def _render_profile_overlay(player_id: str):
                 "class_year": meta.get("class_year"),
                 "height_in": meta.get("height_in") or meta.get("height"),
                 "weight_lb": meta.get("weight_lb") or meta.get("weight"),
+                "high_school": meta.get("high_school") or meta.get("hs"),
                 "traits": meta.get("traits") or {},
             }
 
@@ -463,30 +472,53 @@ def _render_profile_overlay(player_id: str):
         meta_cache = cache.get(pid, {}) if pid else {}
         score = meta_cache.get("score")
 
-        meta = []
-        if profile.get("position"):
-            meta.append(f"{profile['position']}")
-        if profile.get("height_in") and profile.get("weight_lb"):
-            meta.append(f"{_fmt_height(profile['height_in'])} / {int(profile['weight_lb'])} lbs")
-        elif profile.get("height_in"):
-            meta.append(f"{_fmt_height(profile['height_in'])}")
-        elif profile.get("weight_lb"):
-            meta.append(f"{int(profile['weight_lb'])} lbs")
-        if profile.get("team_id"):
-            team_label = str(profile["team_id"])
-            if len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label:
-                # try map from plays cache
-                try:
-                    if "team_name_by_id" in locals():
-                        team_label = team_name_by_id.get(team_label, team_label)
-                except Exception:
-                    pass
-            if not (len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label):
-                meta.append(team_label)
-        if score is not None:
-            meta.append(f"Recruit Score: {score:.1f}")
-        if meta:
-            st.caption(" • ".join(meta))
+        # Resolve team label
+        team_label = str(profile.get("team_id") or "Unknown")
+        if len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label:
+            try:
+                if "team_name_by_id" in locals():
+                    team_label = team_name_by_id.get(team_label, team_label)
+            except Exception:
+                pass
+        if len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label:
+            team_label = "Unknown"
+
+        # Header card
+        stats = profile.get("stats", {}) or {}
+        season_label = stats.get("season_id") or ""
+        ppg = stats.get("ppg")
+        rpg = stats.get("rpg")
+        apg = stats.get("apg")
+
+        height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else "—"
+        weight = f"{int(profile.get('weight_lb'))} lbs" if profile.get("weight_lb") else "—"
+        hs = profile.get("high_school") or "—"
+        class_year = profile.get("class_year") or "—"
+        position = profile.get("position") or "—"
+        score_tag = f"Recruit Score {score:.1f}" if score is not None else "Recruit Score —"
+
+        st.markdown(
+            f"""
+            <div style="background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+                        border:1px solid rgba(255,255,255,0.08); padding:18px 20px; border-radius:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:1.05rem; letter-spacing:0.5px; text-transform:uppercase; opacity:0.7;">{team_label}</div>
+                  <div style="font-size:2.1rem; font-weight:700; color:white; margin-top:2px;">{title}</div>
+                  <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height} • {weight}</div>
+                  <div style="margin-top:6px; opacity:0.7; font-size:0.95rem;">HS: {hs}</div>
+                </div>
+                <div style="text-align:right; min-width:180px;">
+                  <div style="font-size:0.9rem; opacity:0.7;">{season_label} Production</div>
+                  <div style="font-size:1.4rem; font-weight:600;">{(ppg if ppg is not None else 0):.1f} PPG</div>
+                  <div style="opacity:0.8;">{(rpg if rpg is not None else 0):.1f} RPG • {(apg if apg is not None else 0):.1f} APG</div>
+                  <div style="margin-top:8px; padding:6px 10px; display:inline-block; border-radius:999px; border:1px solid rgba(255,255,255,0.15); font-size:0.85rem;">{score_tag}</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         stats = profile.get("stats", {}) or {}
         if stats:
@@ -509,6 +541,10 @@ def _render_profile_overlay(player_id: str):
             cols[0].metric("FG%", _pct(stats.get("fg_percent")))
             cols[1].metric("3P%", _pct(stats.get("shot3_percent")))
             cols[2].metric("FT%", _pct(stats.get("ft_percent")))
+            cols = st.columns(3)
+            cols[0].metric("PPG", _val(stats.get("ppg")))
+            cols[1].metric("RPG", _val(stats.get("rpg")))
+            cols[2].metric("APG", _val(stats.get("apg")))
 
         st.markdown("### Scout Breakdown")
         breakdown = _llm_scout_breakdown(profile)
@@ -581,6 +617,19 @@ def _render_profile_overlay(player_id: str):
                 st.divider()
         else:
             st.caption("No clips available for this player.")
+
+        # video evidence (placeholder)
+        st.markdown("### Video Evidence")
+        video_links = [v for _, _, v in matchups.values() if v]
+        if video_links:
+            uniq = []
+            for v in video_links:
+                if v not in uniq:
+                    uniq.append(v)
+            for v in uniq[:8]:
+                st.markdown(f"• [Video Evidence]({v})")
+        else:
+            st.caption("No video evidence linked yet — will populate when full-access API URLs are available.")
 
     dialog_fn = getattr(st, "dialog", None)
 
@@ -725,6 +774,7 @@ def _players_table_columns():
         "class_year": pick(["class_year", "class", "year"]),
         "height_in": pick(["height_in", "height", "height_inches"]),
         "weight_lb": pick(["weight_lb", "weight", "weight_lbs"]),
+        "high_school": pick(["high_school", "hs", "highschool"]),
     }
     # Must have at least id + name to be useful
     if not resolved["id"] or not resolved["name"]:
