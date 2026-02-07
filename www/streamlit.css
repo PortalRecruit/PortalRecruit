@@ -155,6 +155,22 @@ div.stButton > button p {
   line-height: 1.5;
 }
 
+/* Search loading state */
+body.searching .stTextInput > div > div > input,
+body.searching [data-testid="stTextInput"] input {
+  background-image: linear-gradient(90deg,
+    rgba(15, 23, 42, 0.25) 0%,
+    rgba(15, 23, 42, 0.05) 50%,
+    rgba(15, 23, 42, 0.25) 100%);
+  background-size: 200% 100%;
+  animation: pr-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes pr-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* --- SIDEBAR --- */
 section[data-testid="stSidebar"] {
   background-color: #010409 !important;
