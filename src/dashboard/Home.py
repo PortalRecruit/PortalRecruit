@@ -335,7 +335,7 @@ def _scout_breakdown(profile: dict) -> str:
 
 
 def _llm_scout_breakdown(profile):
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     if not api_key:
         # richer fallback
         name = profile.get("name", "Player")
@@ -553,8 +553,8 @@ def check_ingestion_status():
 
 def render_header():
     banner_html = """
-    <div style="display:flex; justify-content:center; margin-bottom:20px;">
-         <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.jpg" style="max-width:92vw; width:560px; height:auto; object-fit:contain;">
+    <div style="display:flex; justify-content:center; margin-bottom:16px;">
+         <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.jpg" style="max-width:92vw; width:620px; height:auto; object-fit:contain;">
     </div>
     """
 
@@ -568,7 +568,7 @@ def render_header():
     </div>
     """
 
-    components.html(hero_html, height=260)
+    components.html(hero_html, height=320)
 
 
 def _safe_float(val, default=0.0):
@@ -1445,15 +1445,20 @@ elif st.session_state.app_mode == "Search":
                 espn_url = f"https://www.espn.com/search/_/q/{q.replace(' ', '%20')}"
                 ncaa_url = f"https://stats.ncaa.org/search/m?search={q.replace(' ', '+')}"
 
+                pos_val = (player_meta.get(player_id, {}).get("position") if "player_meta" in locals() else "") or "—"
+                team_val = (player_meta.get(player_id, {}).get("team_id") if "player_meta" in locals() else "") or "—"
+                ht_val = (player_meta.get(player_id, {}).get("height_in") if "player_meta" in locals() else None)
+                wt_val = (player_meta.get(player_id, {}).get("weight_lb") if "player_meta" in locals() else None)
+
                 rows.append({
                     "Match": f"{home} vs {away}",
                     "Clock": clock,
                     "Player": (player_name or "Unknown"),
                     "Player ID": player_id,
-                    "Position": (player_meta.get(player_id, {}).get("position") if "player_meta" in locals() else ""),
-                    "Team": (player_meta.get(player_id, {}).get("team_id") if "player_meta" in locals() else ""),
-                    "Height": (player_meta.get(player_id, {}).get("height_in") if "player_meta" in locals() else None),
-                    "Weight": (player_meta.get(player_id, {}).get("weight_lb") if "player_meta" in locals() else None),
+                    "Position": pos_val,
+                    "Team": team_val,
+                    "Height": ht_val,
+                    "Weight": wt_val,
                     "Why": reason,
                     "Strengths": ", ".join(strengths) if strengths else "—",
                     "Weaknesses": ", ".join(weaknesses) if weaknesses else "—",
@@ -1515,10 +1520,12 @@ elif st.session_state.app_mode == "Search":
                             "score": score,
                         }
 
-                    pos = clips[0].get("Position", "") if clips else "—"
-                    team = clips[0].get("Team", "") if clips else "—"
+                    pos = clips[0].get("Position") if clips else None
+                    team = clips[0].get("Team") if clips else None
                     ht = clips[0].get("Height") if clips else None
                     wt = clips[0].get("Weight") if clips else None
+                    pos = pos if pos not in [None, "", "None"] else "—"
+                    team = team if team not in [None, "", "None"] else "—"
                     size = f"{ht}\" / {wt} lbs" if ht and wt else "—"
 
                     label = (
