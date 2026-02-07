@@ -20,6 +20,15 @@ if str(REPO_ROOT) not in sys.path:
 DB_PATH = REPO_ROOT / "data" / "skout.db"
 
 from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
+from src.ingestion.db import connect_db, ensure_schema
+
+# Ensure DB schema (incl. social scout tables) exists on app startup
+try:
+    _conn = connect_db()
+    ensure_schema(_conn)
+    _conn.close()
+except Exception:
+    pass
 
 # --- 2. PAGE CONFIGURATION ---
 def get_base64_image(image_path):
