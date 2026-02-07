@@ -516,34 +516,15 @@ elif st.session_state.app_mode == "Search":
     
     st.markdown("### ð Semantic Player Search")
 
-    # Advanced Filters (collapsed by default)
-    min_dog = min_menace = min_unselfish = min_tough = min_rim = min_shot = min_gravity = 0
-    min_size = 0
-    slider_dog = slider_menace = slider_unselfish = slider_tough = slider_rim = slider_shot = slider_gravity = 0
-    slider_size = 0
-    intent_dog = intent_menace = intent_unselfish = intent_tough = intent_rim = intent_shot = intent_gravity = 0
-    intent_size = 0
+    # Advanced Filters removed (no sliders/filters)
+    slider_dog = slider_menace = slider_unselfish = slider_tough = 0
+    slider_rim = slider_shot = slider_gravity = slider_size = 0
+    intent_dog = intent_menace = intent_unselfish = intent_tough = 0
+    intent_rim = intent_shot = intent_gravity = intent_size = 0
     n_results = 15
-    tag_filter = []
     intent_tags = []
     required_tags = []
     finishing_intent = False
-
-    with st.sidebar.expander("Advanced Filters", expanded=False):
-        slider_dog = st.slider("Min Dog Index", 0, 100, 0)
-        slider_menace = st.slider("Min Defensive Menace", 0, 100, 0)
-        slider_unselfish = st.slider("Min Unselfishness", 0, 100, 0)
-        slider_tough = st.slider("Min Toughness", 0, 100, 0)
-        slider_rim = st.slider("Min Rim Pressure", 0, 100, 0)
-        slider_shot = st.slider("Min Shot Making", 0, 100, 0)
-        slider_gravity = st.slider("Min Gravity Well", 0, 100, 0)
-        slider_size = st.slider("Min Size Index", 0, 100, 0)
-        n_results = st.slider("Number of Results", 5, 50, 15)
-        required_tags = st.multiselect(
-            "Required Tags",
-            ["drive", "rim_pressure", "pnr", "iso", "post_up", "handoff", "pull_up", "3pt", "jumpshot", "dunk", "layup", "steal", "block", "charge_taken", "loose_ball", "deflection", "assist", "turnover"],
-            default=[]
-        )
 
     # Search box + autocomplete
     query = st.text_input("Search", "", placeholder="Downhill guard who can guard")
