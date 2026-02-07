@@ -79,31 +79,32 @@ p, label, li, .stMarkdown {
 /* Transform standard input into a "Mega Search Bar" */
 .stTextInput > div > div > input,
 [data-testid="stTextInput"] input {
-  background: rgba(15, 23, 42, 0.6) !important;
-  border: 1px solid rgba(255,255,255,0.15) !important;
-  color: white !important;
+  background: rgba(248, 250, 252, 0.95) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
   font-family: var(--font-body) !important;
-  font-size: 1.3rem !important;
-  height: 5.4rem !important;
-  min-height: 5.4rem !important;
-  line-height: 1.6 !important;
-  border-radius: 18px !important;
-  padding: 0 1.8rem !important;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  font-size: 1.25rem !important;
+  height: 4.8rem !important;
+  min-height: 4.8rem !important;
+  line-height: 1.4 !important;
+  border-radius: 999px !important;
+  padding: 0 2.2rem !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.stTextInput > div > div > input:focus {
-  border-color: var(--pr-accent) !important;
-  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.2), 0 0 30px var(--pr-accent-glow) !important;
-  transform: scale(1.01);
-  background: rgba(15, 23, 42, 0.9) !important;
+.stTextInput > div > div > input:focus,
+[data-testid="stTextInput"] input:focus {
+  border-color: rgba(15, 23, 42, 0.35) !important;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(0,0,0,0.35) !important;
+  transform: scale(1.005);
+  background: rgba(255, 255, 255, 1) !important;
 }
 
 /* Placeholder styling */
 .stTextInput input::placeholder {
-  color: rgba(255,255,255,0.4) !important;
-  font-weight: 300;
+  color: rgba(15, 23, 42, 0.45) !important;
+  font-weight: 400;
 }
 
 /* --- RESULT CARDS (Styled Buttons) --- */
