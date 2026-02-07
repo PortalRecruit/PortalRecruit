@@ -618,9 +618,8 @@ def render_header():
     hero_html = f"""
     <div class="pr-hero">
       {banner_html}
-      <div class="pr-hero-sub" style="text-align:center; max-width:700px; margin:0 auto; opacity:0.8; font-size:1.1em; line-height:1.6;">
-        The world's first <strong>Semantic Scouting Engine</strong>. <br>
-        Search by playstyle ("downhill guard"), traits ("dog mentality"), or specific situations.
+      <div style="display:flex; justify-content:center; margin:16px auto 0;">
+        <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_TAGLINE_SEARCH_RECRUIT_WIN.jpg" style="max-width:92vw; width:520px; height:auto; object-fit:contain; opacity:0.95;" />
       </div>
     </div>
     """
@@ -811,7 +810,13 @@ elif st.session_state.app_mode == "Search":
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
     # Custom Search Container
-    st.markdown("<h3 style='text-align:center; opacity:0.6; font-weight:300;'>Find your next prospect</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='display:flex; justify-content:center; margin:8px 0 18px;'>"
+        "<img src='https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_TAGLINE_SEARCH_RECRUIT_WIN.jpg' "
+        "style='max-width:92vw; width:520px; height:auto; object-fit:contain; opacity:0.95;'/>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     # Search box + autocomplete
     last_q = st.session_state.get("last_query") or ""
