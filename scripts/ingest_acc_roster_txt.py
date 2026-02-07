@@ -42,6 +42,10 @@ def _norm_name(name: str) -> str:
     return " ".join(parts)
 
 
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
 def _parse_height(ht: str) -> int | None:
     m = re.match(r"(\d+)'(\d+)", ht)
     if not m:
@@ -81,6 +85,7 @@ def main() -> None:
 
     updated = 0
     matched = 0
+    inserted = 0
     current_team = None
 
     # Regex for player line: "Last, First ... 6'3" 185 G ..."
@@ -109,31 +114,45 @@ def main() -> None:
                 if name_key == _norm_name(full_name):
                     pid = pid_val
                     break
-        if not pid:
-            continue
 
-        matched += 1
         height_in = _parse_height(ht)
         weight_lb = int(wt)
 
-        cur.execute(
-            """
-            UPDATE players
-            SET height_in = COALESCE(?, height_in),
-                weight_lb = COALESCE(?, weight_lb),
-                position = COALESCE(?, position),
-                team_id = COALESCE(?, team_id)
-            WHERE player_id = ?
-            """,
-            (height_in, weight_lb, pos, current_team, pid),
-        )
-        if cur.rowcount:
-            updated += 1
+        if pid:
+            matched += 1
+            cur.execute(
+                """
+                UPDATE players
+                SET height_in = COALESCE(?, height_in),
+                    weight_lb = COALESCE(?, weight_lb),
+                    position = COALESCE(?, position),
+                    team_id = COALESCE(?, team_id)
+                WHERE player_id = ?
+                """,
+                (height_in, weight_lb, pos, current_team, pid),
+            )
+            if cur.rowcount:
+                updated += 1
+        else:
+            # Insert roster-only player
+            pid = f"acc_roster_{_slug(current_team)}_{_slug(full_name)}"
+            first_name = first.strip()
+            last_name = last.strip()
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO players
+                (player_id, team_id, first_name, last_name, full_name, position, height_in, weight_lb, class_year)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (pid, current_team, first_name, last_name, full_name, pos, height_in, weight_lb, None),
+            )
+            if cur.rowcount:
+                inserted += 1
 
     conn.commit()
     conn.close()
 
-    print(f"✅ Matched: {matched} | Updated: {updated}")
+    print(f"✅ Matched: {matched} | Updated: {updated} | Inserted: {inserted}")
 
 
 if __name__ == "__main__":
