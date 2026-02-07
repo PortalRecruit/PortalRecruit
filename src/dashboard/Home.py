@@ -394,26 +394,11 @@ def check_ingestion_status():
     return db_path.exists()
 
 def render_header():
-    # Attempt to load local image
-    banner_path = "www/PORTALRECRUIT_LOGO_BANNER_V3.jpg"
-    
-    # Fallback to text if image not found
-    banner_html = ""
-    b64_img = get_base64_image(banner_path)
-    
-    if b64_img:
-        banner_html = f"""
-            <div style="display:flex; justify-content:center; margin-bottom:20px;">
-                <img src="data:image/jpeg;base64,{b64_img}" style="max-width:100%; width:600px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.5);">
-            </div>
-        """
-    else:
-        # Fallback to Github URL if local fails
-        banner_html = f"""
-        <div style="display:flex; justify-content:center; margin-bottom:20px;">
-             <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_LOGO.png" style="max-width:100%; width:400px;">
-        </div>
-        """
+    banner_html = """
+    <div style="display:flex; justify-content:center; margin-bottom:20px;">
+         <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_LOGO.png" style="max-width:100%; width:400px;">
+    </div>
+    """
 
     st.markdown(
         f"""
