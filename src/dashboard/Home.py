@@ -1612,6 +1612,8 @@ elif st.session_state.app_mode == "Search":
                         team_val = team_name_by_id.get(team_val, "—")
                 if team_val == "—" and player_team_guess:
                     team_val = player_team_guess.get(player_id, "—")
+                if team_val == "—":
+                    team_val = "Unknown"
 
                 rows.append({
                     "Match": f"{home} vs {away}",
