@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 DB_PATH = REPO_ROOT / "data" / "skout.db"
 
 # --- 2. PAGE CONFIGURATION ---
-WORDMARK_DARK_URL = "https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_LOGO_BANNER_V3.jpg"
+WORDMARK_DARK_URL = "https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_LOGO.png"
 from src.dashboard.theme import inject_background
 
 st.set_page_config(
