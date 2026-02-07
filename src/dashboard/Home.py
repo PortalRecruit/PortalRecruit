@@ -1468,6 +1468,11 @@ elif st.session_state.app_mode == "Search":
                 wt_val = meta.get("weight_lb")
                 pos_val = pos_val if pos_val not in [None, "", "None"] else "—"
                 team_val = team_val if team_val not in [None, "", "None"] else "—"
+                # Hide internal IDs if team name isn't human-friendly
+                if team_val != "—":
+                    team_clean = str(team_val).strip()
+                    if len(team_clean) > 16 and team_clean.replace("-", "").isalnum() and " " not in team_clean:
+                        team_val = "—"
 
                 rows.append({
                     "Match": f"{home} vs {away}",
