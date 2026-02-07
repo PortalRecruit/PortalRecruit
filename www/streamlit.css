@@ -84,11 +84,11 @@ p, label, li, .stMarkdown {
   color: white !important;
   font-family: var(--font-body) !important;
   font-size: 1.3rem !important;
-  height: 4.2rem !important;
-  min-height: 4.2rem !important;
-  line-height: 1.4 !important;
-  border-radius: 16px !important;
-  padding: 0 1.5rem !important;
+  height: 5.4rem !important;
+  min-height: 5.4rem !important;
+  line-height: 1.6 !important;
+  border-radius: 18px !important;
+  padding: 0 1.8rem !important;
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
