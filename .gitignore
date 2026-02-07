@@ -25,3 +25,4 @@ __pycache__/
 # Never track video files
 *.mp4
 *.mp4.part
+data/*.jsonl
