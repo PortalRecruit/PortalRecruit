@@ -10,6 +10,7 @@ import os
 import base64
 from difflib import SequenceMatcher
 import requests
+from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
 
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
@@ -1835,6 +1836,11 @@ elif st.session_state.app_mode == "Search":
                     team_val = player_team_guess.get(player_id, "—")
                 if team_val == "—":
                     team_val = "Unknown"
+
+                # ACC-only filter
+                acc_set = {t.lower() for t in NCAA_DI_MENS_BASKETBALL.get("ACC", [])}
+                if team_val.lower() not in acc_set:
+                    continue
 
                 rows.append({
                     "Match": f"{home} vs {away}",
