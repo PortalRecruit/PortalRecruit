@@ -618,6 +618,23 @@ def _render_profile_overlay(player_id: str):
         else:
             st.caption("No clips available for this player.")
 
+        # Social media finder
+        st.markdown("### Social Media Finder")
+        try:
+            import urllib.parse as _urlparse
+            q = _build_social_search_query(profile)
+            q_url = _urlparse.quote_plus(q)
+            search_url = f"https://www.google.com/search?q={q_url}"
+            st.markdown(
+                f"<a href='{search_url}' target='_blank' style='text-decoration:none;'>"
+                f"<div style='display:inline-block; padding:10px 16px; border-radius:10px; background:rgba(255,255,255,0.1);"
+                f" border:1px solid rgba(255,255,255,0.2); color:white; font-weight:600;'>🔎 Find Social Media</div></a>",
+                unsafe_allow_html=True,
+            )
+            st.caption("Uses a focused search across Instagram, TikTok, X/Twitter, and Facebook with school + HS validators.")
+        except Exception:
+            pass
+
         # video evidence (placeholder)
         st.markdown("### Video Evidence")
         video_links = [v for _, _, v in matchups.values() if v]
@@ -700,6 +717,36 @@ def _fmt_height(height_in):
     ft = inches // 12
     inch = inches % 12
     return f"{ft}'{inch}\""
+
+
+def _build_social_search_query(profile: dict) -> str:
+    name = (profile.get("name") or "").strip()
+    school = (profile.get("team_id") or "").strip()
+    hs = (profile.get("high_school") or "").strip()
+    class_year = (profile.get("class_year") or "").strip()
+    # Use class year only if present
+    class_term = f"\"Class of {class_year}\"" if class_year else ""
+
+    parts = []
+    if name:
+        parts.append(f"\"{name}\"")
+
+    sites = "(site:instagram.com OR site:tiktok.com OR site:twitter.com OR site:x.com OR site:facebook.com)"
+    parts.append(sites)
+
+    validators = []
+    if school:
+        validators.append(f"\"{school}\"")
+    if hs:
+        validators.append(f"\"{hs}\"")
+    if class_term:
+        validators.append(class_term)
+    validators.extend(["basketball", "athlete"])
+
+    if validators:
+        parts.append("(" + " OR ".join(validators) + ")")
+
+    return " ".join([p for p in parts if p])
 
 
 def _norm_person_name(name: str) -> str:
