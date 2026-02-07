@@ -337,7 +337,34 @@ def _scout_breakdown(profile: dict) -> str:
 def _llm_scout_breakdown(profile):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return _scout_breakdown(profile)
+        # richer fallback
+        name = profile.get("name", "Player")
+        traits = profile.get("traits", {}) or {}
+        strengths = []
+        weaknesses = []
+        for key, label in [
+            ("dog_index", "dog mentality"),
+            ("menace_index", "defensive menace"),
+            ("unselfish_index", "unselfish playmaking"),
+            ("toughness_index", "tough, competitive edge"),
+            ("rim_pressure_index", "rim pressure"),
+            ("shot_making_index", "shot making"),
+            ("size_index", "size/length"),
+        ]:
+            val = traits.get(key)
+            if val is None:
+                continue
+            if val >= 70:
+                strengths.append(label)
+            elif val <= 35:
+                weaknesses.append(label)
+        s = ", ".join(strengths[:3]) if strengths else "balanced skill mix"
+        w = ", ".join(weaknesses[:2]) if weaknesses else "no glaring red flags"
+        return (
+            f"{name} brings a coachable, competitive profile with {s}. "
+            f"Plays with good feel and shows the kind of habits that translate to winning possessions. "
+            f"Growth areas to monitor: {w}."
+        )
 
     name = profile.get("name", "Player")
     traits = profile.get("traits", {}) or {}
@@ -349,15 +376,14 @@ def _llm_scout_breakdown(profile):
             clips.append({"id": play_id, "desc": desc})
 
     prompt = f"""
-You are a wise, veteran college basketball recruiter. Write a personalized, human scout report for {name}.
-Use the traits and stats below, and reference 3-5 clips with citations like [clip:ID].
-Be specific, coach-speak, and make it feel unique to this player.
+You are a legendary, veteran college basketball recruiter with 25+ years in the field. Write a rich, human scouting report for {name}.
+Use coach-speak and be specific. Reference 3–5 clips with citations like [clip:ID].
+Include: style of play, role projection, strengths/weaknesses, and how they impact winning.
+Write 2–3 short paragraphs and end with a 1‑sentence summary of fit.
 
 Traits: {traits}
 Stats: {stats}
 Clips: {clips}
-
-Write 1 short paragraph and end with a 1-sentence summary of fit.
 """.strip()
 
     try:
@@ -419,10 +445,10 @@ def _render_profile_overlay(player_id: str):
         score = meta_cache.get("score")
 
         meta = []
-        if profile.get("position"): meta.append(f"{profile['position']}")
+        if profile.get("position"): meta.append(f"Position: {profile['position']}")
         if profile.get("height_in") and profile.get("weight_lb"):
-            meta.append(f"{profile['height_in']}\" / {profile['weight_lb']} lbs")
-        if profile.get("team_id"): meta.append(f"{profile['team_id']}")
+            meta.append(f"Ht/Wt: {profile['height_in']}\" / {profile['weight_lb']} lbs")
+        if profile.get("team_id"): meta.append(f"School: {profile['team_id']}")
         if score is not None:
             meta.append(f"Score: {score:.1f}")
         if meta:
@@ -528,7 +554,7 @@ def check_ingestion_status():
 def render_header():
     banner_html = """
     <div style="display:flex; justify-content:center; margin-bottom:20px;">
-         <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.jpg" style="max-width:92vw; width:520px; height:auto; object-fit:contain;">
+         <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_WORDMARK_LIGHT.jpg" style="max-width:92vw; width:560px; height:auto; object-fit:contain;">
     </div>
     """
 
@@ -542,7 +568,7 @@ def render_header():
     </div>
     """
 
-    components.html(hero_html, height=180)
+    components.html(hero_html, height=260)
 
 
 def _safe_float(val, default=0.0):
@@ -767,7 +793,7 @@ elif st.session_state.app_mode == "Search":
         slider_rim = slider_shot = slider_gravity = slider_size = 0
         intent_dog = intent_menace = intent_unselfish = intent_tough = 0
         intent_rim = intent_shot = intent_gravity = intent_size = 0
-        n_results = 50
+        n_results = 150
         intent_tags = []
         required_tags = []
         finishing_intent = False
@@ -1483,20 +1509,21 @@ elif st.session_state.app_mode == "Search":
                             "name": player,
                             "position": clips[0].get("Position", "") if clips else "",
                             "team": clips[0].get("Team", "") if clips else "",
+                            "team_id": clips[0].get("Team", "") if clips else "",
                             "height": clips[0].get("Height") if clips else None,
                             "weight": clips[0].get("Weight") if clips else None,
                             "score": score,
                         }
 
-                    pos = clips[0].get("Position", "") if clips else ""
-                    team = clips[0].get("Team", "") if clips else ""
+                    pos = clips[0].get("Position", "") if clips else "—"
+                    team = clips[0].get("Team", "") if clips else "—"
                     ht = clips[0].get("Height") if clips else None
                     wt = clips[0].get("Weight") if clips else None
-                    size = f"{ht}\" / {wt} lbs" if ht and wt else ""
+                    size = f"{ht}\" / {wt} lbs" if ht and wt else "—"
 
                     label = (
                         f"{player}\n"
-                        f"{pos} | {size} | {team} | Score: {score:.1f}"
+                        f"Position: {pos} | Ht/Wt: {size} | School: {team} | Score: {score:.1f}"
                     )
 
                     if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
