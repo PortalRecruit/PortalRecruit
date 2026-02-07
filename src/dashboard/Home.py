@@ -262,17 +262,34 @@ def _get_player_profile(player_id: str):
         profile["traits"] = traits
 
         # season stats
-        cur.execute("SELECT gp, possessions, points, fg_percent, shot3_percent, ft_percent, turnover FROM player_season_stats WHERE player_id = ?", (pid,))
+        cur.execute(
+            """
+            SELECT gp, possessions, points, fg_made, shot3_made, ft_made,
+                   fg_percent, shot3_percent, ft_percent, turnover,
+                   minutes, reb, ast, stl, blk
+            FROM player_season_stats
+            WHERE player_id = ?
+            """,
+            (pid,),
+        )
         srow = cur.fetchone()
         if srow:
             profile["stats"] = {
                 "gp": srow[0],
                 "possessions": srow[1],
                 "points": srow[2],
-                "fg_percent": srow[3],
-                "shot3_percent": srow[4],
-                "ft_percent": srow[5],
-                "turnover": srow[6],
+                "fg_made": srow[3],
+                "shot3_made": srow[4],
+                "ft_made": srow[5],
+                "fg_percent": srow[6],
+                "shot3_percent": srow[7],
+                "ft_percent": srow[8],
+                "turnover": srow[9],
+                "minutes": srow[10],
+                "reb": srow[11],
+                "ast": srow[12],
+                "stl": srow[13],
+                "blk": srow[14],
             }
         else:
             profile["stats"] = {}
@@ -453,6 +470,28 @@ def _render_profile_overlay(player_id: str):
             meta.append(f"Score: {score:.1f}")
         if meta:
             st.caption(" • ".join(meta))
+
+        stats = profile.get("stats", {}) or {}
+        if stats:
+            st.markdown("### Stats Snapshot")
+            cols = st.columns(4)
+            def _pct(v):
+                return f"{v*100:.1f}%" if isinstance(v, (int, float)) else "—"
+            def _val(v):
+                return "—" if v is None else v
+            cols[0].metric("GP", _val(stats.get("gp")))
+            cols[1].metric("PTS", _val(stats.get("points")))
+            cols[2].metric("REB", _val(stats.get("reb")))
+            cols[3].metric("AST", _val(stats.get("ast")))
+            cols = st.columns(4)
+            cols[0].metric("STL", _val(stats.get("stl")))
+            cols[1].metric("BLK", _val(stats.get("blk")))
+            cols[2].metric("MIN", _val(stats.get("minutes")))
+            cols[3].metric("TOV", _val(stats.get("turnover")))
+            cols = st.columns(3)
+            cols[0].metric("FG%", _pct(stats.get("fg_percent")))
+            cols[1].metric("3P%", _pct(stats.get("shot3_percent")))
+            cols[2].metric("FT%", _pct(stats.get("ft_percent")))
 
         st.markdown("### Scout Breakdown")
         breakdown = _llm_scout_breakdown(profile)
