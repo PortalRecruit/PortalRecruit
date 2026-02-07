@@ -901,55 +901,18 @@ elif st.session_state.app_mode == "Search":
                 st.stop()
 
         # Query expansion: add matched phrases to help retrieval
-        from src.search.semantic import (
-            blend_score,
-            build_expanded_query,
-            encode_query,
-            get_cross_encoder,
-        )
+        from src.search.semantic import build_expanded_query, semantic_search
 
         expanded_query = build_expanded_query(query, matched_phrases)
 
-        # Query using pre-encoded normalized embedding for stable retrieval quality.
-        query_vector = encode_query(expanded_query)
-
-        # Initialize defaults to prevent UnboundLocalError
-        ids = []
-        docs = []
-        distances = []
-        metadatas = []
-        play_ids = []
-
-        try:
-            results = collection.query(
-                query_embeddings=[query_vector],
-                n_results=n_results,
-                include=["documents", "distances", "metadatas"],
-            )
-
-            ids = results.get("ids", [[]])[0]
-            docs = results.get("documents", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
-
-            if docs and ids:
-                cross = get_cross_encoder()
-                pairs = [[expanded_query, d] for d in docs]
-                rerank_scores = cross.predict(pairs)
-                ranked = []
-                for pid, doc, dist, meta, rerank_score in zip(ids, docs, distances, metadatas, rerank_scores):
-                    tag_overlap = 0
-                    if isinstance(meta, dict):
-                        meta_tags = set(str(meta.get("tags", "")).replace("|", ",").split(","))
-                        meta_tags = {t.strip().lower() for t in meta_tags if t and t.strip()}
-                        tag_overlap = len(meta_tags.intersection({t.lower() for t in required_tags}))
-                    ranked.append((pid, blend_score(dist, rerank_score, tag_overlap)))
-                ranked.sort(key=lambda x: x[1], reverse=True)
-                play_ids = [r[0] for r in ranked]
-            else:
-                play_ids = ids
-        except Exception:
-            play_ids = ids if ids else []
+        # semantic_search handles fast candidate expansion + reranking.
+        play_ids = semantic_search(
+            collection,
+            query=expanded_query,
+            n_results=n_results,
+            extra_query_terms=matched_phrases,
+            required_tags=required_tags,
+        )
 
         if not play_ids:
             st.warning("No results found.")

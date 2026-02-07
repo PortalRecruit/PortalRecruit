@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Iterable
 
@@ -40,9 +41,37 @@ def build_expanded_query(query: str, matched_phrases: Iterable[str] | None = Non
 
 
 def encode_query(query: str) -> list[float]:
+    return _encode_query_cached((query or "").strip())
+
+
+@lru_cache(maxsize=512)
+def _encode_query_cached(query: str) -> list[float]:
     model = get_embedder()
     vec = model.encode([query], normalize_embeddings=True)
     return vec[0].tolist()
+
+
+def _tokenize(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(t) > 1}
+
+
+def _parse_tags(meta: dict | None) -> set[str]:
+    if not isinstance(meta, dict):
+        return set()
+    raw_tags = str(meta.get("tags", "")).replace("|", ",")
+    return {t.strip().lower() for t in raw_tags.split(",") if t and t.strip()}
+
+
+def _lexical_overlap_score(query_tokens: set[str], doc: str | None, meta: dict | None) -> float:
+    if not query_tokens:
+        return 0.0
+    doc_tokens = _tokenize(doc or "")
+    if not doc_tokens:
+        return 0.0
+    tag_tokens = _parse_tags(meta)
+    overlap = len(query_tokens.intersection(doc_tokens))
+    tag_overlap = len(query_tokens.intersection(tag_tokens))
+    return float(overlap) + (0.5 * float(tag_overlap))
 
 
 def blend_score(vector_distance: float | None, rerank_score: float | None, tag_overlap: int = 0) -> float:
@@ -65,9 +94,12 @@ def semantic_search(
     Returns a list of play_ids ranked best-first.
     """
     expanded_query = build_expanded_query(query, extra_query_terms)
+    requested_n = max(int(n_results), 1)
+    fetch_n = min(max(requested_n * 3, requested_n), 100)
+
     results = collection.query(
         query_embeddings=[encode_query(expanded_query)],
-        n_results=n_results,
+        n_results=fetch_n,
         include=["documents", "distances", "metadatas"],
     )
 
@@ -80,23 +112,36 @@ def semantic_search(
         return []
 
     required_tag_set = {t.lower() for t in (required_tags or [])}
+    query_tokens = _tokenize(expanded_query)
+
+    candidates: list[tuple[str, str | None, float | None, dict | None, float]] = []
+    for pid, doc, dist, meta in zip(ids, docs, distances, metadatas):
+        lexical = _lexical_overlap_score(query_tokens, doc, meta)
+        candidates.append((pid, doc, dist, meta, lexical))
+
+    # Fast pre-ranking improves precision and reduces cross-encoder workload.
+    candidates.sort(
+        key=lambda row: ((1.0 - float(row[2])) if row[2] is not None else 0.0) + (0.15 * row[4]),
+        reverse=True,
+    )
+    rerank_pool = candidates[: min(len(candidates), max(requested_n * 2, requested_n))]
 
     try:
-        if docs:
+        if rerank_pool:
             cross = get_cross_encoder()
-            pairs = [[expanded_query, d] for d in docs]
-            rerank_scores = cross.predict(pairs)
+            pairs = [[expanded_query, (doc or "")] for _, doc, _, _, _ in rerank_pool]
+            rerank_scores = cross.predict(pairs, batch_size=16)
             ranked = []
-            for pid, dist, meta, rerank_score in zip(ids, distances, metadatas, rerank_scores):
+            for (pid, _doc, dist, meta, lexical), rerank_score in zip(rerank_pool, rerank_scores):
                 tag_overlap = 0
-                if isinstance(meta, dict) and required_tag_set:
-                    meta_tags = set(str(meta.get("tags", "")).replace("|", ",").split(","))
-                    meta_tags = {t.strip().lower() for t in meta_tags if t and t.strip()}
+                if required_tag_set:
+                    meta_tags = _parse_tags(meta)
                     tag_overlap = len(meta_tags.intersection(required_tag_set))
-                ranked.append((pid, blend_score(dist, rerank_score, tag_overlap)))
+                score = blend_score(dist, float(rerank_score), tag_overlap) + (0.10 * lexical)
+                ranked.append((pid, score))
             ranked.sort(key=lambda x: x[1], reverse=True)
-            return [r[0] for r in ranked]
+            return [r[0] for r in ranked[:requested_n]]
     except Exception:
-        return ids
+        return [row[0] for row in candidates[:requested_n]]
 
-    return ids
+    return [row[0] for row in candidates[:requested_n]]
