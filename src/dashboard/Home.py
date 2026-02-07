@@ -10,7 +10,6 @@ import os
 import base64
 from difflib import SequenceMatcher
 import requests
-from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
 
 # --- 1. SETUP PATHS ---
 # Ensure repo root is on sys.path so imports work
@@ -19,6 +18,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DB_PATH = REPO_ROOT / "data" / "skout.db"
+
+from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
 
 # --- 2. PAGE CONFIGURATION ---
 def get_base64_image(image_path):
