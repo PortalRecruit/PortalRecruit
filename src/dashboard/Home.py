@@ -778,7 +778,7 @@ def render_header():
     <div class="pr-hero">
       {banner_html}
       <div style="display:flex; justify-content:center; margin:-6px auto 0;">
-        <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_TAGLINE_SEARCH_RECRUIT_WIN.webp" style="max-width:92vw; width:700px; height:auto; object-fit:contain; opacity:0.95;" />
+        <img src="https://portalrecruit.github.io/PortalRecruit/PORTALRECRUIT_TAGLINE_SEARCH_RECRUIT_WIN.webp" style="max-width:92vw; width:680px; height:auto; object-fit:contain; opacity:0.95;" />
       </div>
     </div>
     """
@@ -1096,7 +1096,7 @@ elif st.session_state.app_mode == "Search":
     last_q = st.session_state.get("last_query") or ""
     search_status = st.session_state.get("search_status") or "Search"
 
-    cols = st.columns([7, 0.8], gap="small")
+    cols = st.columns([5, 1.2], gap="small")
     with cols[0]:
         query = st.text_input(
             "Player Search",

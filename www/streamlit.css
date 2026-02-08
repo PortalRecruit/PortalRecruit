@@ -79,7 +79,7 @@ p, label, li, .stMarkdown {
 /* Transform standard input into a "Mega Search Bar" */
 [data-testid="stTextInput"],
 .stTextInput {
-  max-width: 640px;
+  max-width: 560px;
   margin-left: auto;
   margin-right: auto;
 }
