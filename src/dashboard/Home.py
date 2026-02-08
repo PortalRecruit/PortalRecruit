@@ -196,6 +196,36 @@ def _lookup_player_id_by_name(name: str):
 
 
 
+@st.cache_resource(show_spinner=False)
+def _get_search_collection():
+    import chromadb
+
+    vector_db_path = REPO_ROOT / "data" / "vector_db"
+    client = chromadb.PersistentClient(path=str(vector_db_path))
+    try:
+        return client.get_collection(name="skout_plays")
+    except Exception:
+        _restore_vector_db_if_needed()
+        client = chromadb.PersistentClient(path=str(vector_db_path))
+        return client.get_collection(name="skout_plays")
+
+
+@st.cache_data(show_spinner=False, max_entries=50000)
+def _tag_play_cached(description: str) -> tuple[str, ...]:
+    from src.processing.play_tagger import tag_play
+
+    return tuple(tag_play(description or ""))
+
+
+def _required_tag_threshold(required_tags: list[str]) -> int:
+    n = len(set([t for t in required_tags if t]))
+    if n <= 1:
+        return n
+    if n == 2:
+        return 1
+    return 2
+
+
 def _get_qp():
     try:
         return st.query_params
@@ -568,7 +598,7 @@ def _render_profile_overlay(player_id: str):
         plays = profile.get("plays", [])
         tag_counts = {}
         for _, desc, _, _ in plays:
-            for t in tag_play(desc):
+            for t in _tag_play_cached(desc):
                 tag_counts[t] = tag_counts.get(t, 0) + 1
         if tag_counts:
             st.markdown("### Tags Applied")
@@ -609,12 +639,12 @@ def _render_profile_overlay(player_id: str):
         filtered = []
         if plays:
             for play_id, desc, game_id, clock in plays:
-                tags = set(tag_play(desc))
+                tags = set(_tag_play_cached(desc))
                 if last_tags and not tags.intersection(last_tags):
                     continue
                 filtered.append((play_id, desc, game_id, clock, tags))
 
-        clips = filtered if filtered else [(p[0], p[1], p[2], p[3], set(tag_play(p[1]))) for p in plays]
+        clips = filtered if filtered else [(p[0], p[1], p[2], p[3], set(_tag_play_cached(p[1]))) for p in plays]
         st.markdown("### Film Room")
         if clips:
             # Build unique video list
@@ -1357,35 +1387,37 @@ elif st.session_state.app_mode == "Search":
         if finishing_intent:
             required_tags = list(set(required_tags + ["rim_finish", "layup", "dunk", "made"]))
 
-        # User requested no filters
-        required_tags = []
         st.session_state["last_query"] = query
-        st.session_state["last_query_tags"] = []
+        st.session_state["last_query_tags"] = sorted(set(required_tags + intent_tags))
 
         # --- VECTOR SEARCH ---
-        import chromadb
         import sqlite3
 
-        VECTOR_DB_PATH = REPO_ROOT / "data" / "vector_db"
         DB_PATH = REPO_ROOT / "data" / "skout.db"
 
-        client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
         try:
-            collection = client.get_collection(name="skout_plays")
+            collection = _get_search_collection()
         except Exception:
-            # try restore once more if parts exist
-            _restore_vector_db_if_needed()
-            client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
-            try:
-                collection = client.get_collection(name="skout_plays")
-            except Exception:
-                st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
-                st.stop()
+            st.error("Vector DB not found. Run embeddings first (generate_embeddings.py) to create 'skout_plays'.")
+            st.stop()
 
         # Query expansion: add matched phrases to help retrieval
         from src.search.semantic import build_expanded_query, semantic_search
 
         expanded_query = build_expanded_query(query, matched_phrases)
+        if matched_phrases or required_tags:
+            hints = []
+            if matched_phrases:
+                hints.append("Matched concepts: " + ", ".join(sorted(set(matched_phrases))[:6]))
+            if required_tags:
+                req_threshold = _required_tag_threshold(required_tags)
+                hints.append(
+                    "Required tags: "
+                    + ", ".join(sorted(set(required_tags)))
+                    + f" (need {req_threshold}+)"
+                )
+            if hints:
+                st.caption(" • ".join(hints))
 
         status = st.status("Searching…", expanded=False)
         status.update(state="running")
@@ -1409,7 +1441,7 @@ elif st.session_state.app_mode == "Search":
         # Stage 2: vector search
         play_ids = semantic_search(
             collection,
-            query=expanded_query,
+            query=query,
             n_results=n_results,
             extra_query_terms=matched_phrases,
             required_tags=required_tags,
@@ -1776,14 +1808,17 @@ elif st.session_state.app_mode == "Search":
                 if t.get("size") is not None and t.get("size") < slider_size:
                     continue
 
-                play_tags = tag_play(desc)
+                play_tags = list(_tag_play_cached(desc))
                 if "non_possession" in play_tags:
                     continue
                 if apply_exclude and exclude_tags and set(play_tags).intersection(exclude_tags):
                     continue
-                # Only hard-filter by user-selected Required Tags
-                if required_tags and not set(required_tags).issubset(set(play_tags)):
-                    continue
+                # Adaptive required-tag filter: avoid zero-result dead ends on sparse tag vocab.
+                if required_tags:
+                    req_threshold = _required_tag_threshold(required_tags)
+                    req_hits = len(set(required_tags).intersection(set(play_tags)))
+                    if req_hits < req_threshold:
+                        continue
 
                 # Numeric filters (e.g., over 36% from 3)
                 if numeric_filters:
