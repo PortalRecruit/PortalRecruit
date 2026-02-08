@@ -308,7 +308,7 @@ def _get_player_profile(player_id: str):
         # season stats
         cur.execute(
             """
-            SELECT season_id, gp, possessions, points, fg_made, shot3_made, ft_made,
+            SELECT season_id, season_label, gp, possessions, points, fg_made, shot3_made, ft_made,
                    fg_percent, shot3_percent, ft_percent, turnover,
                    minutes, reb, ast, stl, blk, ppg, rpg, apg
             FROM player_season_stats
@@ -322,24 +322,25 @@ def _get_player_profile(player_id: str):
         if srow:
             profile["stats"] = {
                 "season_id": srow[0],
-                "gp": srow[1],
-                "possessions": srow[2],
-                "points": srow[3],
-                "fg_made": srow[4],
-                "shot3_made": srow[5],
-                "ft_made": srow[6],
-                "fg_percent": srow[7],
-                "shot3_percent": srow[8],
-                "ft_percent": srow[9],
-                "turnover": srow[10],
-                "minutes": srow[11],
-                "reb": srow[12],
-                "ast": srow[13],
-                "stl": srow[14],
-                "blk": srow[15],
-                "ppg": srow[16],
-                "rpg": srow[17],
-                "apg": srow[18],
+                "season_label": srow[1],
+                "gp": srow[2],
+                "possessions": srow[3],
+                "points": srow[4],
+                "fg_made": srow[5],
+                "shot3_made": srow[6],
+                "ft_made": srow[7],
+                "fg_percent": srow[8],
+                "shot3_percent": srow[9],
+                "ft_percent": srow[10],
+                "turnover": srow[11],
+                "minutes": srow[12],
+                "reb": srow[13],
+                "ast": srow[14],
+                "stl": srow[15],
+                "blk": srow[16],
+                "ppg": srow[17],
+                "rpg": srow[18],
+                "apg": srow[19],
             }
         else:
             profile["stats"] = {}
@@ -457,6 +458,8 @@ def _llm_scout_breakdown(profile):
     name = profile.get("name", "Player")
     traits = profile.get("traits", {}) or {}
     stats = profile.get("stats", {}) or {}
+    season_label = stats.get("season_label") or stats.get("season_id") or ""
+    search_tags = profile.get("search_tags", []) or []
     plays = profile.get("plays", [])[:6]
     clips = []
     for play_id, desc, game_id, clock in plays:
@@ -466,13 +469,24 @@ def _llm_scout_breakdown(profile):
     model_name = os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL") or "gpt-5-nano"
 
     prompt = f"""
-You are a legendary, veteran college basketball recruiter with 25+ years in the field. Write a rich, human scouting report for {name}.
-Use coach-speak and be specific. Reference 3–5 clips with citations like [clip:ID].
-Include: style of play, role projection, strengths/weaknesses, and how they impact winning.
-Write 2–3 short paragraphs and end with a 1‑sentence summary of fit.
+You are The Old Recruiter — a 25+ year college basketball scout. Produce a premium, structured player breakdown for {name}.
+Be specific, grounded in the data, and use coach-speak. Keep it clean and readable.
 
+FORMAT (use headings and bullets):
+1) Snapshot (1–2 lines)
+2) Strengths (bullet list)
+3) Weaknesses / Growth Areas (bullet list)
+4) Role & Projection (short paragraph)
+5) Search Tag Fit (bullet list of the most relevant tags)
+6) Old Recruiter Summary (1–2 strong, human paragraphs — colloquial, realistic, and decisive)
+7) Clip Notes (reference 3–5 clips with citations like [clip:ID] if available)
+
+Make sure the analysis explicitly uses the season label and interprets the per‑game stats accordingly.
+
+Season: {season_label}
 Traits: {traits}
 Stats: {stats}
+Search Tags: {search_tags}
 Clips: {clips}
 """.strip()
 
@@ -498,9 +512,92 @@ Clips: {clips}
         return _scout_breakdown(profile)
 
 
+def _build_video_search_query(profile: dict) -> str:
+    name = profile.get("name") or ""
+    school = profile.get("team_id") or ""
+    hs = profile.get("high_school") or ""
+    api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+    model_name = os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL") or "gpt-4o-mini"
+
+    heuristic = f"\"{name}\" (\"{school}\" OR {school}) (\"{hs}\" OR {hs}) (basketball OR highlights OR mixtape) site:youtube.com"
+
+    if not api_key:
+        return heuristic
+
+    prompt = f"""
+Create one highly targeted Google search query to find YouTube basketball clips for the player.
+Use expert boolean operators, quotes, and parentheses. Use the player's name plus school or high school.
+Return ONLY the query string.
+Player: {name}
+School: {school}
+High School: {hs}
+""".strip()
+
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": "You are an expert search operator."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 80,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        query = resp.json()["choices"][0]["message"]["content"].strip()
+        return query or heuristic
+    except Exception:
+        return heuristic
+
+
+def _serper_video_search(query: str, num: int = 6) -> list[dict]:
+    api_key = os.getenv("SERPER_API_KEY") or st.secrets.get("SERPER_API_KEY")
+    if not api_key:
+        return []
+    try:
+        resp = requests.post(
+            "https://google.serper.dev/videos",
+            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+            json={"q": query, "num": num},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json() or {}
+        return data.get("videos", []) or []
+    except Exception:
+        return []
+
+
+def _get_fallback_videos(profile: dict) -> list[str]:
+    pid = _normalize_player_id(profile.get("player_id") or profile.get("id"))
+    cache_key = f"fallback_videos_{pid}"
+    cached = st.session_state.get(cache_key)
+    if cached is not None:
+        return cached
+
+    query = _build_video_search_query(profile)
+    results = _serper_video_search(query)
+    urls = []
+    for r in results:
+        link = r.get("link") or r.get("url")
+        if link and "youtube.com" in link:
+            urls.append(link)
+    st.session_state[cache_key] = urls
+    return urls
+
+
+
 def _render_profile_overlay(player_id: str):
     pid = _normalize_player_id(player_id)
     profile = _get_player_profile(pid)
+
+    if profile is not None:
+        profile["search_tags"] = st.session_state.get("last_query_tags", []) or []
 
     # Fallback: use metadata captured from the current search results
     if not profile:
@@ -517,6 +614,7 @@ def _render_profile_overlay(player_id: str):
                 "weight_lb": meta.get("weight_lb") or meta.get("weight"),
                 "high_school": meta.get("high_school") or meta.get("hs"),
                 "traits": meta.get("traits") or {},
+                "search_tags": st.session_state.get("last_query_tags", []) or [],
             }
 
     if not profile:
@@ -548,7 +646,7 @@ def _render_profile_overlay(player_id: str):
 
         # Header card
         stats = profile.get("stats", {}) or {}
-        season_label = stats.get("season_id") or ""
+        season_label = stats.get("season_label") or stats.get("season_id") or ""
         ppg = stats.get("ppg")
         rpg = stats.get("rpg")
         apg = stats.get("apg")
@@ -652,10 +750,16 @@ def _render_profile_overlay(player_id: str):
                     strengths.append(label)
                 elif val <= 35:
                     weaknesses.append(label)
+            if strengths or weaknesses:
+                st.markdown("**ML Assessment**")
             if strengths:
                 st.success(f"**Strengths:** {', '.join(strengths[:4])}")
             if weaknesses:
                 st.error(f"**Weaknesses:** {', '.join(weaknesses[:3])}")
+            tags = profile.get("search_tags", []) or []
+            if tags:
+                st.markdown("**Matched Tags**")
+                st.write("• " + "\n• ".join(tags))
 
         # clips section
         matchups = profile.get("matchups", {})
@@ -705,7 +809,17 @@ def _render_profile_overlay(player_id: str):
                     if st.button("See more", key=f"see_more_{pid}"):
                         st.session_state[f"show_more_videos_{pid}"] = True
             else:
-                st.caption("No video clips available.")
+                fallback = _get_fallback_videos(profile)
+                if fallback:
+                    st.caption("No Synergy clips available — showing web‑found video highlights.")
+                    cols = st.columns(3)
+                    for i, vurl in enumerate(fallback[:3]):
+                        with cols[i % 3]:
+                            st.video(vurl)
+                    if len(fallback) > 3:
+                        st.button("See more", key=f"see_more_web_{pid}")
+                else:
+                    st.caption("No video clips available.")
 
             if st.session_state.get(f"show_more_videos_{pid}"):
                 st.markdown("#### All Relevant Clips")
@@ -718,7 +832,17 @@ def _render_profile_overlay(player_id: str):
                 if st.button("Close", key=f"close_more_{pid}"):
                     st.session_state[f"show_more_videos_{pid}"] = False
         else:
-            st.caption("No clips available for this player.")
+            fallback = _get_fallback_videos(profile)
+            if fallback:
+                st.caption("No Synergy clips available — showing web‑found video highlights.")
+                cols = st.columns(3)
+                for i, vurl in enumerate(fallback[:3]):
+                    with cols[i % 3]:
+                        st.video(vurl)
+                if len(fallback) > 3:
+                    st.button("See more", key=f"see_more_web_{pid}")
+            else:
+                st.caption("No clips available for this player.")
 
         # Social media scouting report (Auto-Scout)
         st.markdown("### Social Media Scouting Report")
@@ -747,7 +871,13 @@ def _render_profile_overlay(player_id: str):
             vibe = rep.get("vibe_check", "—")
             green = rep.get("green_flags") or []
             red = rep.get("red_flags") or []
+            persona = rep.get("persona_tags") or []
+            leadership = rep.get("leadership_signals") or []
+            discipline = rep.get("discipline_concerns") or []
+            nil_ops = rep.get("NIL_opportunities") or []
+            risk = rep.get("recruiting_risk") or "—"
             summary = rep.get("summary") or ""
+            recommendation = rep.get("recommendation") or ""
 
             st.markdown(
                 f"**Verified:** {handle} {f'({platform})' if platform else ''} — **Confidence:** {confidence}%**" 
@@ -755,14 +885,30 @@ def _render_profile_overlay(player_id: str):
             )
             if vibe:
                 st.success(f"Vibe Check: {vibe}")
+            st.markdown(f"**Recruiting Risk:** {risk}")
+            if persona:
+                st.markdown("**Persona Tags**")
+                st.write("• " + "\n• ".join(persona))
             if green:
                 st.markdown("**Green Flags**")
                 st.write("• " + "\n• ".join(green))
             if red:
                 st.markdown("**Red Flags**")
                 st.write("• " + "\n• ".join(red))
+            if leadership:
+                st.markdown("**Leadership Signals**")
+                st.write("• " + "\n• ".join(leadership))
+            if discipline:
+                st.markdown("**Discipline Concerns**")
+                st.write("• " + "\n• ".join(discipline))
+            if nil_ops:
+                st.markdown("**NIL Opportunities**")
+                st.write("• " + "\n• ".join(nil_ops))
             if summary:
                 st.info(summary)
+            if recommendation:
+                st.markdown("**Recruiting Recommendation**")
+                st.write(recommendation)
 
             if report.get("chosen_url"):
                 st.markdown(f"[Source Profile]({report['chosen_url']})")

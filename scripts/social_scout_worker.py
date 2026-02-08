@@ -142,9 +142,10 @@ def _analyze_social(player: dict, social_data: dict) -> dict:
 
     client = OpenAI(api_key=OPENAI_API_KEY)
     system_prompt = (
-        "You are an NCAA lead recruiter and behavioral analyst."
+        "You are an NCAA lead recruiter, behavioral analyst, and NIL compliance advisor."
         "Write a polished, human-sounding social media character assessment."
-        "Focus on discipline, teamwork, leadership tone, work ethic, and any red/green flags."
+        "Focus on discipline, leadership tone, work ethic, team orientation, and red/green flags."
+        "Be specific and actionable for coaches."
     )
     user_prompt = f"""
 PROSPECT:
@@ -164,9 +165,15 @@ Return JSON with fields:
 - platform
 - confidence (0-100)
 - vibe_check (1-4 words)
+- persona_tags (list of 3-6 tags)
 - green_flags (list)
 - red_flags (list)
-- summary (4-7 sentences, well-crafted, human tone)
+- leadership_signals (list)
+- discipline_concerns (list)
+- NIL_opportunities (list)
+- recruiting_risk (Low/Medium/High)
+- summary (6-10 sentences, realistic, coach-friendly, human tone)
+- recommendation (2-4 sentences: how a staff should approach this player off-court)
 """.strip()
 
     resp = client.chat.completions.create(

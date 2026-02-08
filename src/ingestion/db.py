@@ -169,6 +169,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS player_season_stats (
             player_id TEXT,
             season_id TEXT,
+            season_label TEXT,
             team_id TEXT,
             gp INTEGER,
             possessions INTEGER,
@@ -215,6 +216,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         ("ppg", "REAL"),
         ("rpg", "REAL"),
         ("apg", "REAL"),
+        ("season_label", "TEXT"),
     ]
     for col, ctype in stat_columns:
         try:
