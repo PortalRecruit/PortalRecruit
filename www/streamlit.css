@@ -238,6 +238,12 @@ code {
 footer { display: none !important; }
 
 /* Responsive adjustments */
+/* Search button sizing */
+.stButton > button {
+  min-height: 3.1rem;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   h1 { font-size: 2rem !important; }
   .stTextInput > div > div > input {
