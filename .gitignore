@@ -26,3 +26,6 @@ __pycache__/
 *.mp4
 *.mp4.part
 data/*.jsonl
+
+# Don't add cookies for Instaloader
+scripts/cookies.txt
