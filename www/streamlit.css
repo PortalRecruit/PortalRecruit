@@ -244,6 +244,11 @@ footer { display: none !important; }
   font-weight: 600;
 }
 
+/* Blink the search button while searching */
+body.searching .stButton > button {
+  animation: oldrecruiter-pulse 1.6s ease-in-out infinite;
+}
+
 @media (max-width: 640px) {
   h1 { font-size: 2rem !important; }
   .stTextInput > div > div > input {

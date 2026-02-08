@@ -1090,8 +1090,10 @@ elif st.session_state.app_mode == "Search":
 
     # Search box + autocomplete
     def _mark_search_requested():
+        # User hit enter in the search bar
         st.session_state["search_requested"] = True
-        st.session_state["search_status"] = "Search"
+        st.session_state["search_status"] = "Searching"
+        st.session_state["search_started_at"] = time.time()
 
     last_q = st.session_state.get("last_query") or ""
     search_status = st.session_state.get("search_status") or "Search"
@@ -1109,7 +1111,8 @@ elif st.session_state.app_mode == "Search":
     with cols[1]:
         if st.button(search_status, key="search_btn", use_container_width=True):
             st.session_state["search_requested"] = True
-            st.session_state["search_status"] = "Search"
+            st.session_state["search_status"] = "Searching"
+            st.session_state["search_started_at"] = time.time()
 
     # Recent searches
     try:
@@ -1162,6 +1165,9 @@ elif st.session_state.app_mode == "Search":
         st.stop()
 
     if query and st.session_state.get("search_requested"):
+        st.session_state["search_status"] = "Searching"
+        if not st.session_state.get("search_started_at"):
+            st.session_state["search_started_at"] = time.time()
         # Search vars (Advanced Filters removed but logic kept for defaults)
         slider_dog = slider_menace = slider_unselfish = slider_tough = 0
         slider_rim = slider_shot = slider_gravity = slider_size = 0
@@ -1280,6 +1286,7 @@ elif st.session_state.app_mode == "Search":
         expanded_query = build_expanded_query(query, matched_phrases)
 
         import time
+        import concurrent.futures
 
         status = st.status("Searching…", expanded=False)
         status.update(state="running")
@@ -1291,25 +1298,41 @@ elif st.session_state.app_mode == "Search":
         # Old Recruiter progress display
         progress_placeholder = st.empty()
         stages = [
-            (25, "Phoning the Old Recruiter...", "#7aa2f7"),
-            (50, "Explaining Uber to the Old Recruiter...", "#f6c177"),
-            (75, "Confirming arrival of the Old Recruiter at Prospect's local gym...", "#7bdcb5"),
-            (100, "Incoming email from <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a>...", "#ff7eb6"),
+            (0, 10, "Phoning the Old Recruiter...", "#7aa2f7"),
+            (10, 18, "Explaining Uber to the Old Recruiter...", "#f6c177"),
+            (18, 26, "Confirming arrival of the Old Recruiter at Prospect's local gym...", "#7bdcb5"),
+            (26, 34, "Incoming email from <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a>...", "#ff7eb6"),
         ]
-        for pct, msg, color in stages:
-            progress_placeholder.markdown(
-                f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
-                unsafe_allow_html=True,
-            )
-            time.sleep(2.0)
 
-        # semantic_search handles fast candidate expansion + reranking.
-        play_ids = semantic_search(
-            collection,
-            query=expanded_query,
-            n_results=n_results,
-            extra_query_terms=matched_phrases,
-            required_tags=required_tags,
+        # Run search in background so UI can update
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(
+                semantic_search,
+                collection,
+                expanded_query,
+                n_results,
+                matched_phrases,
+                required_tags,
+            )
+            start_t = st.session_state.get("search_started_at") or time.time()
+            while not future.done():
+                elapsed = time.time() - start_t
+                msg = stages[-1][2]
+                color = stages[-1][3]
+                for s, e, m, c in stages:
+                    if s <= elapsed < e:
+                        msg, color = m, c
+                        break
+                progress_placeholder.markdown(
+                    f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
+                    unsafe_allow_html=True,
+                )
+                time.sleep(0.8)
+            play_ids = future.result()
+
+        st.markdown(
+            "<script>document.body.classList.remove('searching');</script>",
+            unsafe_allow_html=True,
         )
 
         # Final email-style header
@@ -1996,7 +2019,7 @@ elif st.session_state.app_mode == "Search":
                 pass
 
             if rows:
-                st.session_state["search_status"] = "Finished"
+                st.session_state["search_status"] = "Search"
                 st.session_state["search_requested"] = False
 
                 # Group by player (top 3 clips each)
@@ -2071,6 +2094,6 @@ elif st.session_state.app_mode == "Search":
                     if extra:
                         st.caption(" • ".join(extra))
             else:
-                st.session_state["search_status"] = "Finished"
+                st.session_state["search_status"] = "Search"
                 st.session_state["search_requested"] = False
                 st.info("No results after filters.")
