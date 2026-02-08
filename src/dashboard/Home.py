@@ -771,7 +771,7 @@ def _render_profile_overlay(player_id: str):
         @dialog_fn("Player Profile")
         def show_dialog():
             cols = st.columns([1, 1, 6])
-            if cols[0].button("← Back", key="back_profile"):
+            if cols[0].button("< BACK", key="back_profile"):
                 _clear_qp("player")
                 st.rerun()
             if cols[1].button("✖ Close", key="close_profile_top"):
@@ -1426,7 +1426,7 @@ elif st.session_state.app_mode == "Search":
             unsafe_allow_html=True,
         )
 
-        # Old Recruiter progress display (milestone-based)
+        # Old Recruiter progress display (timed + milestone)
         progress_placeholder = st.empty()
         st.session_state["progress_placeholder"] = progress_placeholder
         def _stage(msg, color="#7aa2f7"):
@@ -1435,10 +1435,19 @@ elif st.session_state.app_mode == "Search":
                 unsafe_allow_html=True,
             )
 
-        # Stage 1: query prepared
+        # Stage 1: immediate, 10s
         _stage("Phoning the Old Recruiter...", "#7aa2f7")
+        __import__("time").sleep(10)
 
-        # Stage 2: vector search
+        # Stage 1b: airport drop-off, 5s
+        _stage("Dropping the Old Recruiter off at the airport...", "#9b7bff")
+        __import__("time").sleep(5)
+
+        # Stage 2: explaining Uber (min 5s)
+        explaining_start = __import__("time").time()
+        _stage("Explaining Uber to the Old Recruiter...", "#f6c177")
+
+        # Vector search
         play_ids = semantic_search(
             collection,
             query=query,
@@ -1446,7 +1455,10 @@ elif st.session_state.app_mode == "Search":
             extra_query_terms=matched_phrases,
             required_tags=required_tags,
         )
-        _stage("Explaining Uber to the Old Recruiter...", "#f6c177")
+        # ensure at least 5s on explaining stage
+        elapsed = __import__("time").time() - explaining_start
+        if elapsed < 5:
+            __import__("time").sleep(5 - elapsed)
 
         st.markdown(
             "<script>document.body.classList.remove('searching');</script>",

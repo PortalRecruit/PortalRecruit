@@ -219,13 +219,14 @@ code {
 
 /* Old Recruiter progress */
 .old-recuiter-stage {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 2.1rem;
+  font-weight: 800;
   animation: oldrecruiter-pulse 1.6s ease-in-out infinite;
 }
 .old-recuiter-final {
-  font-size: 1.02rem;
-  font-weight: 600;
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: #ffffff;
   margin-top: 8px;
 }
 @keyframes oldrecruiter-pulse {
