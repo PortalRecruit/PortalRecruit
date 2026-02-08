@@ -1357,8 +1357,10 @@ elif st.session_state.app_mode == "Search":
         if finishing_intent:
             required_tags = list(set(required_tags + ["rim_finish", "layup", "dunk", "made"]))
 
+        # User requested no filters
+        required_tags = []
         st.session_state["last_query"] = query
-        st.session_state["last_query_tags"] = sorted(set(intent_tags + required_tags))
+        st.session_state["last_query_tags"] = []
 
         # --- VECTOR SEARCH ---
         import chromadb
@@ -2037,10 +2039,7 @@ elif st.session_state.app_mode == "Search":
                 if team_val == "—":
                     team_val = "Unknown"
 
-                # ACC-only filter
-                acc_set = {t.lower() for t in NCAA_DI_MENS_BASKETBALL.get("ACC", [])}
-                if team_val.lower() not in acc_set:
-                    continue
+                # ACC-only filter removed per user request
 
                 rows.append({
                     "Match": f"{home} vs {away}",
