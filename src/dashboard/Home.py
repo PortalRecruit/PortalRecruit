@@ -371,6 +371,11 @@ def _get_player_profile(player_id: str):
 def _scout_breakdown(profile: dict) -> str:
     name = profile.get("name", "Player")
     traits = profile.get("traits", {}) or {}
+    stats = profile.get("stats", {}) or {}
+    position = profile.get("position") or ""
+    height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else ""
+    school = profile.get("team_id") or ""
+
     strengths = []
     weaknesses = []
     trait_map = [
@@ -391,13 +396,29 @@ def _scout_breakdown(profile: dict) -> str:
         elif val <= 35:
             weaknesses.append(label)
 
+    ppg = stats.get("ppg")
+    rpg = stats.get("rpg")
+    apg = stats.get("apg")
+
     lines = []
+    intro = f"{name}"
+    if position:
+        intro += f" ({position}" + (f", {height}" if height else "") + ")"
+    if school:
+        intro += f" at {school}"
+    lines.append(intro + ".")
+
+    if ppg is not None and rpg is not None and apg is not None:
+        lines.append(f"Production snapshot: {ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG.")
+
     if strengths:
-        lines.append(f"{name} consistently shows {', '.join(strengths[:3])} on film and in the data.")
+        lines.append(f"Strengths: {', '.join(strengths[:3])} show up consistently on film and in the data.")
     if weaknesses:
-        lines.append(f"Primary growth areas: {', '.join(weaknesses[:2])}.")
-    if not lines:
-        lines.append(f"{name} profiles as a balanced contributor with a mix of skill and competitive traits.")
+        lines.append(f"Growth areas: {', '.join(weaknesses[:2])}.")
+    if not strengths and not weaknesses:
+        lines.append("Profiles as a balanced contributor with a mix of skill and competitive traits.")
+
+    lines.append("Overall, the profile suggests a dependable contributor who can fit into winning lineups when used correctly.")
     return " ".join(lines)
 
 
@@ -591,7 +612,10 @@ def _render_profile_overlay(player_id: str):
         st.markdown("### Scout Breakdown")
         breakdown = _llm_scout_breakdown(profile)
         breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
-        st.info(breakdown)
+        st.markdown(
+            f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
+            unsafe_allow_html=True,
+        )
 
         # tags applied
         from src.processing.play_tagger import tag_play
@@ -770,22 +794,16 @@ def _render_profile_overlay(player_id: str):
     if callable(dialog_fn):
         @dialog_fn("Player Profile")
         def show_dialog():
-            cols = st.columns([1, 1, 6])
-            if cols[0].button("< BACK", key="back_profile"):
-                _clear_qp("player")
-                st.rerun()
-            if cols[1].button("✖ Close", key="close_profile_top"):
+            cols = st.columns([1, 7])
+            if cols[0].button("<", key="back_profile"):
                 _clear_qp("player")
                 st.rerun()
             body()
         show_dialog()
     else:
         st.markdown("---")
-        cols = st.columns([1, 1, 6])
-        if cols[0].button("← Back", key="back_profile"):
-            _clear_qp("player")
-            st.rerun()
-        if cols[1].button("✖ Close Profile", key="close_profile"):
+        cols = st.columns([1, 7])
+        if cols[0].button("<", key="back_profile"):
             _clear_qp("player")
             st.rerun()
         body()
@@ -1286,28 +1304,29 @@ elif st.session_state.app_mode == "Search":
         else:
             st.info("No results after filters.")
 
-    # Name-aware search routing
-    name_resolution = _resolve_name_query(query)
-    if name_resolution.get("mode") == "exact_single":
-        _set_qp(player=name_resolution["matches"][0]["player_id"])
-        st.rerun()
-    elif name_resolution.get("mode") in {"exact_multi", "fuzzy_multi"}:
-        st.markdown("### Did you mean")
-        cols = st.columns(2)
-        for i, p in enumerate(name_resolution["matches"]):
-            with cols[i % 2]:
-                # Card style for 'Did you mean'
-                st.markdown(f"""
-                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:8px;">
-                    <div style="font-weight:bold; color:white;">{p['full_name']}</div>
-                    <div style="font-size:0.8em; opacity:0.7;">{p.get('team_id','')} • {p.get('position','')}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("View Profile", key=f"didyoumean_{p['player_id']}"):
-                    st.session_state.profile_player_id = p["player_id"]
-                    _render_profile_overlay(st.session_state.profile_player_id)
-                    st.stop()
-        st.stop()
+    # Name-aware search routing (skip while active search)
+    if not st.session_state.get("search_requested"):
+        name_resolution = _resolve_name_query(query)
+        if name_resolution.get("mode") == "exact_single":
+            _set_qp(player=name_resolution["matches"][0]["player_id"])
+            st.rerun()
+        elif name_resolution.get("mode") in {"exact_multi", "fuzzy_multi"}:
+            st.markdown("### Did you mean")
+            cols = st.columns(2)
+            for i, p in enumerate(name_resolution["matches"]):
+                with cols[i % 2]:
+                    # Card style for 'Did you mean'
+                    st.markdown(f"""
+                    <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:8px;">
+                        <div style="font-weight:bold; color:white;">{p['full_name']}</div>
+                        <div style="font-size:0.8em; opacity:0.7;">{p.get('team_id','')} • {p.get('position','')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("View Profile", key=f"didyoumean_{p['player_id']}"):
+                        st.session_state.profile_player_id = p["player_id"]
+                        _render_profile_overlay(st.session_state.profile_player_id)
+                        st.stop()
+            st.stop()
 
     # Persist last results when not actively searching
     if not st.session_state.get("search_requested") and st.session_state.get("last_rows"):
@@ -1406,6 +1425,22 @@ elif st.session_state.app_mode == "Search":
         st.session_state["search_status"] = "Searching"
         if not st.session_state.get("search_started_at"):
             st.session_state["search_started_at"] = __import__("time").time()
+
+        # Immediate progress feedback
+        progress_placeholder = st.empty()
+        st.session_state["progress_placeholder"] = progress_placeholder
+        def _stage(msg, color="#7aa2f7"):
+            progress_placeholder.markdown(
+                f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
+                unsafe_allow_html=True,
+            )
+        _stage("Phoning the Old Recruiter...", "#7aa2f7")
+        __import__("time").sleep(10)
+        _stage("Dropping the Old Recruiter off at the airport...", "#9b7bff")
+        __import__("time").sleep(5)
+        explaining_start = __import__("time").time()
+        _stage("Explaining Uber to the Old Recruiter...", "#f6c177")
+
         # Search vars (Advanced Filters removed but logic kept for defaults)
         slider_dog = slider_menace = slider_unselfish = slider_tough = 0
         slider_rim = slider_shot = slider_gravity = slider_size = 0
@@ -1497,8 +1532,10 @@ elif st.session_state.app_mode == "Search":
         if finishing_intent:
             required_tags = list(set(required_tags + ["rim_finish", "layup", "dunk", "made"]))
 
+        # User requested no filters
+        required_tags = []
         st.session_state["last_query"] = query
-        st.session_state["last_query_tags"] = sorted(set(required_tags + intent_tags))
+        st.session_state["last_query_tags"] = []
 
         # --- VECTOR SEARCH ---
         import sqlite3
@@ -1523,26 +1560,7 @@ elif st.session_state.app_mode == "Search":
             unsafe_allow_html=True,
         )
 
-        # Old Recruiter progress display (timed + milestone)
-        progress_placeholder = st.empty()
-        st.session_state["progress_placeholder"] = progress_placeholder
-        def _stage(msg, color="#7aa2f7"):
-            progress_placeholder.markdown(
-                f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
-                unsafe_allow_html=True,
-            )
-
-        # Stage 1: immediate, 10s
-        _stage("Phoning the Old Recruiter...", "#7aa2f7")
-        __import__("time").sleep(10)
-
-        # Stage 1b: airport drop-off, 5s
-        _stage("Dropping the Old Recruiter off at the airport...", "#9b7bff")
-        __import__("time").sleep(5)
-
-        # Stage 2: explaining Uber (min 5s)
-        explaining_start = __import__("time").time()
-        _stage("Explaining Uber to the Old Recruiter...", "#f6c177")
+        # Old Recruiter progress display already initiated above
 
         # Vector search
         play_ids = semantic_search(
