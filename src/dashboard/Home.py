@@ -1285,9 +1285,6 @@ elif st.session_state.app_mode == "Search":
 
         expanded_query = build_expanded_query(query, matched_phrases)
 
-        import time
-        import concurrent.futures
-
         status = st.status("Searching…", expanded=False)
         status.update(state="running")
         st.markdown(
@@ -1295,54 +1292,29 @@ elif st.session_state.app_mode == "Search":
             unsafe_allow_html=True,
         )
 
-        # Old Recruiter progress display
+        # Old Recruiter progress display (milestone-based)
         progress_placeholder = st.empty()
-        stages = [
-            (0, 10, "Phoning the Old Recruiter...", "#7aa2f7"),
-            (10, 18, "Explaining Uber to the Old Recruiter...", "#f6c177"),
-            (18, 26, "Confirming arrival of the Old Recruiter at Prospect's local gym...", "#7bdcb5"),
-            (26, 34, "Incoming email from <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a>...", "#ff7eb6"),
-        ]
-
-        # Run search in background so UI can update
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            future = ex.submit(
-                semantic_search,
-                collection,
-                expanded_query,
-                n_results,
-                matched_phrases,
-                required_tags,
+        def _stage(msg, color="#7aa2f7"):
+            progress_placeholder.markdown(
+                f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
+                unsafe_allow_html=True,
             )
-            start_t = st.session_state.get("search_started_at") or time.time()
-            while not future.done():
-                elapsed = time.time() - start_t
-                msg = stages[-1][2]
-                color = stages[-1][3]
-                for s, e, m, c in stages:
-                    if s <= elapsed < e:
-                        msg, color = m, c
-                        break
-                progress_placeholder.markdown(
-                    f"<div class='old-recuiter-stage' style='color:{color}'>" + msg + "</div>",
-                    unsafe_allow_html=True,
-                )
-                time.sleep(0.8)
-            play_ids = future.result()
+
+        # Stage 1: query prepared
+        _stage("Phoning the Old Recruiter...", "#7aa2f7")
+
+        # Stage 2: vector search
+        play_ids = semantic_search(
+            collection,
+            query=expanded_query,
+            n_results=n_results,
+            extra_query_terms=matched_phrases,
+            required_tags=required_tags,
+        )
+        _stage("Explaining Uber to the Old Recruiter...", "#f6c177")
 
         st.markdown(
             "<script>document.body.classList.remove('searching');</script>",
-            unsafe_allow_html=True,
-        )
-
-        # Final email-style header
-        progress_placeholder.markdown(
-            f"""
-            <div class='old-recuiter-final'>
-              <div><strong>From:</strong> &lt;The Old Recruiter&gt; <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a></div>
-              <div><strong>Subject:</strong> Here's the report you requested regarding {query}...</div>
-            </div>
-            """,
             unsafe_allow_html=True,
         )
 
@@ -1669,6 +1641,9 @@ elif st.session_state.app_mode == "Search":
                 k: math.sqrt(sum(((_safe_float(v) - stat_means[k]) ** 2) for v in _collect_vals(k)) / max(1, len(_collect_vals(k))))
                 for k in stat_keys
             }
+
+            # Stage 3: DB fetch + enrichment
+            _stage("Confirming arrival of the Old Recruiter at Prospect's local gym...", "#7bdcb5")
 
             rows = []
             for pid, desc, gid, clock, player_id, player_name in play_rows:
@@ -2000,6 +1975,9 @@ elif st.session_state.app_mode == "Search":
                     "Score": round(score, 2),
                 })
 
+            # Stage 4: scoring/ranking
+            _stage("Incoming email from <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a>...", "#ff7eb6")
+
             rows.sort(key=lambda r: r.get("Score", 0), reverse=True)
 
             # --- Search memory ---
@@ -2026,6 +2004,16 @@ elif st.session_state.app_mode == "Search":
                 grouped = {}
                 for r in rows:
                     grouped.setdefault(r["Player"], []).append(r)
+
+                progress_placeholder.markdown(
+                    f"""
+                    <div class='old-recuiter-final'>
+                      <div><strong>From:</strong> &lt;The Old Recruiter&gt; <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a></div>
+                      <div><strong>Subject:</strong> Here's the report you requested regarding {query}...</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
                 st.markdown("<h3 style='margin-top:40px;'>Top Prospects</h3>", unsafe_allow_html=True)
 
