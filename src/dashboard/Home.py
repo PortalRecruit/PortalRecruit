@@ -1766,6 +1766,7 @@ elif st.session_state.app_mode == "Search":
             required_tags=required_tags,
             boost_tags=intent_tags,
         )
+        count_initial = len(play_ids)
 
         # Fallback expansion if results too thin
         if len(play_ids) < 8:
@@ -1778,6 +1779,7 @@ elif st.session_state.app_mode == "Search":
                 boost_tags=intent_tags,
                 diversify_by_player=False,
             )
+        count_after_fallback = len(play_ids)
         # ensure at least 5s on explaining stage
         elapsed = __import__("time").time() - explaining_start
         if elapsed < 5:
@@ -2476,5 +2478,20 @@ elif st.session_state.app_mode == "Search":
             st.session_state["search_status"] = "Search"
             st.session_state["search_requested"] = False
             st.session_state["last_rows"] = rows
+
+            # Query diagnostics
+            try:
+                diag = {
+                    "query": query,
+                    "count_initial": count_initial,
+                    "count_after_fallback": count_after_fallback,
+                    "rows_after_meta": len(rows),
+                }
+                st.session_state["last_query_diag"] = diag
+                st.caption(
+                    f"Search diagnostics — initial: {count_initial}, after fallback: {count_after_fallback}, rows: {len(rows)}"
+                )
+            except Exception:
+                pass
 
             _render_results(rows, query)
