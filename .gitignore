@@ -32,3 +32,4 @@ scripts/inject_cookies.py
 
 # dont add streamlit secrets
 src/dashboard/.streamlit/secrets.toml
+/data/vector_db.zip.part*
