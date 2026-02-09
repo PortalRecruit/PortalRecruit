@@ -22,6 +22,8 @@ DB_PATH = REPO_ROOT / "data" / "skout.db"
 
 from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
 from src.ingestion.db import connect_db, ensure_schema
+# Import the new Scout logic
+from src.llm.scout import generate_scout_breakdown
 
 # Ensure DB schema (incl. social scout tables) exists on app startup
 try:
@@ -368,172 +370,8 @@ def _get_player_profile(player_id: str):
             pass
         return None
 
-
-def _scout_breakdown(profile: dict) -> str:
-    name = profile.get("name", "Player")
-    traits = profile.get("traits", {}) or {}
-    stats = profile.get("stats", {}) or {}
-    position = profile.get("position") or ""
-    height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else ""
-    school = profile.get("team_id") or ""
-
-    strengths = []
-    weaknesses = []
-    trait_map = [
-        ("dog_index", "dog mentality"),
-        ("menace_index", "defensive menace"),
-        ("unselfish_index", "unselfish playmaking"),
-        ("toughness_index", "tough, competitive edge"),
-        ("rim_pressure_index", "rim pressure"),
-        ("shot_making_index", "shot making"),
-        ("size_index", "size/length"),
-    ]
-    for key, label in trait_map:
-        val = traits.get(key)
-        if val is None:
-            continue
-        if val >= 70:
-            strengths.append(label)
-        elif val <= 35:
-            weaknesses.append(label)
-
-    ppg = stats.get("ppg")
-    rpg = stats.get("rpg")
-    apg = stats.get("apg")
-
-    lines = []
-    intro = f"{name}"
-    if position:
-        intro += f" ({position}" + (f", {height}" if height else "") + ")"
-    if school:
-        intro += f" at {school}"
-    lines.append(intro + ".")
-
-    if ppg is not None and rpg is not None and apg is not None:
-        lines.append(f"Production snapshot: {ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG.")
-
-    if strengths:
-        lines.append(f"Strengths: {', '.join(strengths[:3])} show up consistently on film and in the data.")
-    if weaknesses:
-        lines.append(f"Growth areas: {', '.join(weaknesses[:2])}.")
-    if not strengths and not weaknesses:
-        lines.append("Profiles as a balanced contributor with a mix of skill and competitive traits.")
-
-    lines.append("Overall, the profile suggests a dependable contributor who can fit into winning lineups when used correctly.")
-    return " ".join(lines)
-
-
-def _llm_scout_breakdown(profile):
-    api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-    if not api_key:
-        st.caption("LLM key missing: OPENAI_API_KEY not found in env or Streamlit secrets.")
-        # richer fallback
-        name = profile.get("name", "Player")
-        traits = profile.get("traits", {}) or {}
-        strengths = []
-        weaknesses = []
-        for key, label in [
-            ("dog_index", "dog mentality"),
-            ("menace_index", "defensive menace"),
-            ("unselfish_index", "unselfish playmaking"),
-            ("toughness_index", "tough, competitive edge"),
-            ("rim_pressure_index", "rim pressure"),
-            ("shot_making_index", "shot making"),
-            ("size_index", "size/length"),
-        ]:
-            val = traits.get(key)
-            if val is None:
-                continue
-            if val >= 70:
-                strengths.append(label)
-            elif val <= 35:
-                weaknesses.append(label)
-        s = ", ".join(strengths[:3]) if strengths else "balanced skill mix"
-        w = ", ".join(weaknesses[:2]) if weaknesses else "no glaring red flags"
-        return (
-            f"{name} brings a coachable, competitive profile with {s}. "
-            f"Plays with good feel and shows the kind of habits that translate to winning possessions. "
-            f"Growth areas to monitor: {w}."
-        )
-
-    name = profile.get("name", "Player")
-    traits = profile.get("traits", {}) or {}
-    stats = profile.get("stats", {}) or {}
-    season_label = stats.get("season_label") or stats.get("season_id") or ""
-    search_tags = profile.get("search_tags", []) or []
-    plays = profile.get("plays", [])[:6]
-    clips = []
-    for play_id, desc, game_id, clock in plays:
-        if desc:
-            clips.append({"id": play_id, "desc": desc})
-
-    model_name = os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL") or "gpt-5-nano"
-
-    # force specificity with unique facts
-    fact_bits = []
-    if stats.get("ppg") is not None:
-        fact_bits.append(f"{stats.get('ppg'):.1f} PPG")
-    if stats.get("rpg") is not None:
-        fact_bits.append(f"{stats.get('rpg'):.1f} RPG")
-    if stats.get("apg") is not None:
-        fact_bits.append(f"{stats.get('apg'):.1f} APG")
-    if profile.get("height_in"):
-        fact_bits.append(f"Height {profile.get('height_in')} in")
-    if profile.get("weight_lb"):
-        fact_bits.append(f"Weight {profile.get('weight_lb')} lb")
-    if profile.get("class_year"):
-        fact_bits.append(f"Class {profile.get('class_year')}")
-    if profile.get("team_id"):
-        fact_bits.append(f"School {profile.get('team_id')}")
-
-    prompt = f"""
-You are The Old Recruiter — a 25+ year college basketball scout. Produce a premium, structured player breakdown for {name}.
-Be specific, grounded in the data, and use coach-speak. Keep it clean and readable.
-
-STRICT REQUIREMENTS:
-- Mention at least 3 UNIQUE facts from this list: {fact_bits}
-- Reference the season label when citing production.
-- If you cannot comply, reply ONLY: INSUFFICIENT
-
-FORMAT (use headings and bullets):
-1) Snapshot (1–2 lines)
-2) Strengths (bullet list)
-3) Weaknesses / Growth Areas (bullet list)
-4) Role & Projection (short paragraph)
-5) Search Tag Fit (bullet list of the most relevant tags)
-6) Old Recruiter Summary (1–2 strong, human paragraphs — colloquial, realistic, and decisive)
-7) Clip Notes (reference 3–5 clips with citations like [clip:ID] if available)
-
-Season: {season_label}
-Traits: {traits}
-Stats: {stats}
-Search Tags: {search_tags}
-Clips: {clips}
-""".strip()
-
-    try:
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": "You are a veteran college basketball recruiter."},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.7,
-                "max_tokens": 520,
-            },
-            timeout=25,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
-        if content.strip() == "INSUFFICIENT":
-            return _scout_breakdown(profile)
-        return content
-    except Exception:
-        return _scout_breakdown(profile)
+# --- REMOVED OLD LOCAL BREAKDOWN FUNCTIONS ---
+# Replaced by src/llm/scout.py
 
 
 def _build_video_search_query(profile: dict) -> str:
@@ -732,7 +570,11 @@ def _render_profile_overlay(player_id: str):
             cols[2].metric("APG", _val(stats.get("apg")))
 
         st.markdown("### Scout Breakdown")
-        breakdown = _llm_scout_breakdown(profile)
+        
+        # Use new generator logic
+        with st.spinner("The Old Recruiter is watching tape..."):
+            breakdown = generate_scout_breakdown(profile)
+        
         breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
         st.markdown(
             f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
