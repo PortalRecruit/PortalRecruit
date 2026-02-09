@@ -839,17 +839,17 @@ def check_ingestion_status():
     return db_path.exists()
 
 def render_header():
-    header_logo = get_base64_image("www/PR_LOGO_NEW_RECTANGLE.png")
+    header_logo = get_base64_image("www/PR_LOGO_NEW_RECTANGLE.jpg")
     if header_logo:
         banner_html = f"""
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"data:image/png;base64,{header_logo}\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+             <img src=\"data:image/jpeg;base64,{header_logo}\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
         </div>
         """
     else:
         banner_html = """
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"https://portalrecruit.github.io/PortalRecruit/PR_LOGO_NEW_RECTANGLE.png\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+             <img src=\"https://portalrecruit.github.io/PortalRecruit/PR_LOGO_NEW_RECTANGLE.jpg\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
         </div>
         """
 
