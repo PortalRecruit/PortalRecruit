@@ -30,3 +30,6 @@ data/*.jsonl
 # Don't add cookies for Instaloader
 scripts/cookies.txt
 scripts/inject_cookies.py
+
+# dont add streamlit secrets
+src/dashboard/.streamlit/secrets.toml
