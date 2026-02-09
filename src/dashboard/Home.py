@@ -1650,6 +1650,9 @@ elif st.session_state.app_mode == "Search":
                 intents.update(infer_intents_verbose(part))
         except Exception:
             intents = {}
+            q_lower = (query or "").lower()
+            numeric_filters = []
+            logic = "single"
         exclude_tags = set()
         role_hints = set()
         explain = []
@@ -1661,6 +1664,24 @@ elif st.session_state.app_mode == "Search":
         clutch_intent = "clutch" in intents
         undervalued_intent = "undervalued" in intents
         finishing_intent = "finishing" in intents
+
+        # Extra heuristic tags/roles based on raw query
+        heuristic_tags = []
+        if any(k in q_lower for k in ["big man", "big", "center", "rim protector", "paint"]):
+            role_hints.add("big")
+            heuristic_tags += ["rim_pressure", "block", "post_up", "paint_touch"]
+        if any(k in q_lower for k in ["stretch", "can shoot", "shooting big", "pick and pop", "spacing"]):
+            heuristic_tags += ["shot3", "catch_shoot", "spot_up", "pick_pop"]
+        if any(k in q_lower for k in ["athletic", "explosive", "vertical", "lob threat"]):
+            heuristic_tags += ["rim_run", "dunk", "putback", "transition"]
+        if any(k in q_lower for k in ["rebound", "boards", "glass"]):
+            heuristic_tags += ["off_reb", "def_reb"]
+        if any(k in q_lower for k in ["rim pressure", "downhill", "paint touch"]):
+            heuristic_tags += ["drive", "rim_finish", "layup"]
+        if any(k in q_lower for k in ["playmaker", "creator", "facilitator"]):
+            heuristic_tags += ["assist", "pnr", "drive_kick"]
+        if any(k in q_lower for k in ["defender", "stopper", "lockdown"]):
+            heuristic_tags += ["deflection", "steal", "on_ball"]
 
         for hit, phrase in intents.values():
             intent = hit.intent
@@ -1697,6 +1718,10 @@ elif st.session_state.app_mode == "Search":
         if "big" in role_hints:
             intent_tags = list(set(intent_tags + ["rim_pressure", "block", "post_up"]))
 
+        # Add heuristic tags into intent tags (soft boosts)
+        if heuristic_tags:
+            intent_tags = list(set(intent_tags + heuristic_tags))
+
         # Finishing intent should hard-require rim finish + made
         if finishing_intent:
             required_tags = list(set(required_tags + ["rim_finish", "layup", "dunk", "made"]))
@@ -1704,7 +1729,7 @@ elif st.session_state.app_mode == "Search":
         # User requested no filters
         required_tags = []
         st.session_state["last_query"] = query
-        st.session_state["last_query_tags"] = []
+        st.session_state["last_query_tags"] = intent_tags
 
         # --- VECTOR SEARCH ---
         import sqlite3
@@ -1718,9 +1743,10 @@ elif st.session_state.app_mode == "Search":
             st.stop()
 
         # Query expansion: add matched phrases to help retrieval
-        from src.search.semantic import build_expanded_query, semantic_search
+        from src.search.semantic import build_expanded_query, semantic_search, expand_query_terms
 
-        expanded_query = build_expanded_query(query, matched_phrases)
+        expanded_terms = expand_query_terms(query)
+        expanded_query = build_expanded_query(query, (matched_phrases or []) + (expanded_terms or []))
 
         status = st.status("Searching…", expanded=False)
         status.update(state="running")
@@ -1736,9 +1762,22 @@ elif st.session_state.app_mode == "Search":
             collection,
             query=query,
             n_results=n_results,
-            extra_query_terms=matched_phrases,
+            extra_query_terms=(matched_phrases or []) + (expanded_terms or []),
             required_tags=required_tags,
+            boost_tags=intent_tags,
         )
+
+        # Fallback expansion if results too thin
+        if len(play_ids) < 8:
+            play_ids = semantic_search(
+                collection,
+                query=expanded_query,
+                n_results=max(n_results, 200),
+                extra_query_terms=(matched_phrases or []) + (expanded_terms or []),
+                required_tags=[],
+                boost_tags=intent_tags,
+                diversify_by_player=False,
+            )
         # ensure at least 5s on explaining stage
         elapsed = __import__("time").time() - explaining_start
         if elapsed < 5:

@@ -54,6 +54,32 @@ def build_expanded_query(query: str, matched_phrases: Iterable[str] | None = Non
     return query if not ordered else f"{query} | {' | '.join(ordered)}"
 
 
+def expand_query_terms(query: str) -> list[str]:
+    q = (query or "").lower()
+    terms = []
+    synonym_map = {
+        "athletic": ["explosive", "quick twitch", "springy", "vertical pop"],
+        "big man": ["big", "center", "frontcourt", "rim protector", "paint"],
+        "stretch": ["pick and pop", "spacing", "trail three"],
+        "shoot": ["3pt", "catch and shoot", "shot making", "spacing"],
+        "rim protect": ["shot block", "anchor", "backline"],
+        "rebound": ["glass", "board", "clean the glass"],
+        "downhill": ["rim pressure", "paint touch", "drive"],
+        "playmaker": ["creator", "facilitator", "unselfish"],
+        "defend": ["stopper", "menace", "lockdown"],
+        "switchable": ["versatile", "multi-positional"],
+    }
+    for key, vals in synonym_map.items():
+        if key in q:
+            terms.extend(vals)
+    # phrase-based expansions
+    if "big" in q and "shoot" in q:
+        terms.extend(["stretch 5", "pick and pop", "trail 3", "shooting big"])
+    if "athletic" in q and "big" in q:
+        terms.extend(["rim run", "lob threat", "vertical spacer"])
+    return list(dict.fromkeys([t for t in terms if t]))
+
+
 def encode_query(query: str) -> list[float]:
     return _encode_query_cached((query or "").strip())
 
@@ -146,6 +172,7 @@ def semantic_search(
     n_results: int = 15,
     extra_query_terms: Iterable[str] | None = None,
     required_tags: Iterable[str] | None = None,
+    boost_tags: Iterable[str] | None = None,
     diversify_by_player: bool = True,
 ) -> list[str]:
     """Run semantic search with normalized embeddings + optional rerank blend.
@@ -171,6 +198,7 @@ def semantic_search(
         return []
 
     required_tag_set = {str(t).strip().lower() for t in (required_tags or []) if str(t).strip()}
+    boost_tag_set = {str(t).strip().lower() for t in (boost_tags or []) if str(t).strip()}
     query_tokens = _tokenize(expanded_query)
 
     candidates: list[tuple[str, str | None, float | None, dict | None, float]] = []
@@ -194,13 +222,17 @@ def semantic_search(
             rerank_scores = cross.predict(pairs, batch_size=16)
             ranked = []
             for (pid, _doc, dist, meta, lexical), rerank_score in zip(rerank_pool, rerank_scores):
+                meta_tags = _parse_tags(meta)
                 tag_overlap = 0
                 if required_tag_set:
-                    meta_tags = _parse_tags(meta)
                     tag_overlap = len(meta_tags.intersection(required_tag_set))
+                elif boost_tag_set:
+                    tag_overlap = len(meta_tags.intersection(boost_tag_set))
                 score = blend_score(dist, float(rerank_score), tag_overlap) + (0.10 * lexical)
                 if required_tag_set and used_tag_fallback:
                     score += 0.08 * float(tag_overlap)
+                if boost_tag_set and tag_overlap:
+                    score += 0.05 * float(tag_overlap)
                 ranked.append((pid, score))
             ranked.sort(key=lambda x: x[1], reverse=True)
             ranked_ids = [r[0] for r in ranked]
