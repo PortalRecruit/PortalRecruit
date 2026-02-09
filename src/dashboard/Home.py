@@ -426,6 +426,7 @@ def _scout_breakdown(profile: dict) -> str:
 def _llm_scout_breakdown(profile):
     api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     if not api_key:
+        st.caption("LLM key missing: OPENAI_API_KEY not found in env or Streamlit secrets.")
         # richer fallback
         name = profile.get("name", "Player")
         traits = profile.get("traits", {}) or {}
