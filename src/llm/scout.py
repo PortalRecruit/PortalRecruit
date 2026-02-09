@@ -17,9 +17,28 @@ FALLBACK_TEMPLATES = [
 ]
 
 def _get_client():
+    # 1. Safety check: Is the library installed?
+    if OpenAI is None:
+        return None
+
+    # 2. Try Environment Variable
     api_key = os.getenv("OPENAI_API_KEY")
+    
+    # 3. Try Streamlit Secrets (if env var is missing)
+    if not api_key:
+        try:
+            import streamlit as st
+            # Safely check secrets without crashing if they don't exist
+            if hasattr(st, "secrets"):
+                api_key = st.secrets.get("OPENAI_API_KEY")
+        except ImportError:
+            pass
+        except Exception:
+            pass
+            
     if not api_key:
         return None
+        
     return OpenAI(api_key=api_key)
 
 def generate_scout_breakdown(profile: Dict[str, Any]) -> str:
@@ -103,7 +122,9 @@ def generate_scout_breakdown(profile: Dict[str, Any]) -> str:
     if not client:
         strength = standouts[0] if standouts else "general versatility"
         template = random.choice(FALLBACK_TEMPLATES)
-        return f"**System Note:** API Key missing. \n\n" + template.format(strength=strength, height=ht_fmt)
+        # Indicate why it failed
+        reason = "Library missing" if OpenAI is None else "Key missing"
+        return f"**Scout Unavailable ({reason}):** {template.format(strength=strength, height=ht_fmt)}"
 
     try:
         response = client.chat.completions.create(
