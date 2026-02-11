@@ -1,5 +1,6 @@
 import traceback
 import streamlit as st
+import streamlit.components.v1 as components
 import sys
 import os
 import re
@@ -32,12 +33,12 @@ try:
     for _ in range(5):
         if (repo_root / "src").exists():
             break
-        if repo_root == repo_root.parent: 
+        if repo_root == repo_root.parent:
             break
         repo_root = repo_root.parent
-    
+
     REPO_ROOT = repo_root
-    
+
     # Add Repo Root to sys.path so imports work
     root_str = str(REPO_ROOT)
     if root_str not in sys.path:
@@ -47,22 +48,20 @@ try:
     # Snowflake allows writing to tempfile.gettempdir()
     WORK_DIR = Path(tempfile.gettempdir()) / "portal_recruit_workspace"
     WORK_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # C. Database Setup (Copy from Repo to Temp if needed)
     # We must operate on a copy because we cannot write to REPO_ROOT
     RO_DB_PATH = REPO_ROOT / "data" / "skout.db"
     RW_DB_PATH = WORK_DIR / "skout.db"
-    DB_PATH_STR = str(RW_DB_PATH) # Global String for SQLite connections
+    DB_PATH_STR = str(RW_DB_PATH)  # Global String for SQLite connections
 
     if not RW_DB_PATH.exists():
         if RO_DB_PATH.exists():
-            # Copy the master DB to the writable location
             try:
                 shutil.copy2(RO_DB_PATH, RW_DB_PATH)
             except Exception as e:
                 st.error(f"Failed to copy database to workspace: {e}")
         else:
-            # Create empty if it doesn't exist at all
             pass
 
 except Exception as e:
@@ -70,7 +69,6 @@ except Exception as e:
     st.stop()
 
 # --- 3. SAFE IMPORTS ---
-# We load these inside try/except blocks so if one fails, we see WHY on the screen.
 
 NCAA_DI_MENS_BASKETBALL = None
 connect_db = None
@@ -78,26 +76,21 @@ ensure_schema = None
 generate_scout_breakdown = None
 
 try:
-    # Try importing Config
     try:
         from config.ncaa_di_mens_basketball import NCAA_DI_MENS_BASKETBALL
     except ImportError:
-        pass 
+        pass
 
-    # Try importing DB Utils
     try:
         from src.ingestion.db import connect_db, ensure_schema
     except Exception:
-        # We will fallback to local sqlite3 logic if this fails
         pass
-    
-    # Try importing Scout logic
+
     try:
         from src.llm.scout import generate_scout_breakdown
     except Exception:
-         st.error(f"⚠️ Error loading Scout Module (src.llm.scout):\n\n{traceback.format_exc()}")
+        st.error(f"⚠️ Error loading Scout Module (src.llm.scout):\n\n{traceback.format_exc()}")
 
-    # Try importing Theme
     try:
         from src.dashboard.theme import inject_background
         inject_background()
@@ -109,27 +102,32 @@ except Exception as e:
 
 # --- 4. INITIALIZATION ---
 
-# Run DB setup safely on the WRITABLE path
 try:
-    # Create directory if missing
     os.makedirs(os.path.dirname(DB_PATH_STR), exist_ok=True)
-    
-    # Initialize Schema on the temp DB
     _conn = sqlite3.connect(DB_PATH_STR)
     if ensure_schema:
         ensure_schema(_conn)
     _conn.close()
-
 except Exception:
     pass
 
-# Load CSS (Read from REPO_ROOT is fine)
 css_path = REPO_ROOT / "www" / "streamlit.css"
 if css_path.exists():
     with open(str(css_path), "r") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # --- 5. HELPER FUNCTIONS ---
+
+def _get_secret(name: str, default: str | None = None) -> str | None:
+    """Fetch a secret from env or Streamlit secrets without hard-failing in Snowflake."""
+    val = os.getenv(name)
+    if val:
+        return val
+    try:
+        return st.secrets.get(name, default)  # type: ignore[attr-defined]
+    except Exception:
+        return default
+
 
 def get_base64_image(image_path):
     """Encodes a local image from Read-Only Repo to base64."""
@@ -142,27 +140,24 @@ def get_base64_image(image_path):
     except Exception:
         return None
 
+
 def _restore_vector_db_if_needed() -> bool:
     """
     Rebuilds vector_db into the WRITABLE WORK_DIR.
     Reads zip parts from REPO_ROOT, Writes extracted DB to WORK_DIR.
     """
-    # Check if already exists in writable space
     writable_chroma_path = WORK_DIR / "vector_db" / "chroma.sqlite3"
     if writable_chroma_path.exists():
         return True
 
-    # Check for source parts in Repo
     parts = sorted((REPO_ROOT / "data").glob("vector_db.zip.part*"))
     if not parts:
-        # Check if un-split zip exists in repo
         single_zip = REPO_ROOT / "data" / "vector_db.zip"
         if single_zip.exists():
             zip_source = single_zip
         else:
             return False
     else:
-        # Reassemble zip into TEMP dir
         zip_source = WORK_DIR / "vector_db.zip"
         try:
             with open(str(zip_source), "wb") as out:
@@ -171,14 +166,14 @@ def _restore_vector_db_if_needed() -> bool:
         except Exception:
             return False
 
-    # Extract to TEMP dir
     try:
         with zipfile.ZipFile(str(zip_source)) as zf:
-            zf.extractall(str(WORK_DIR)) # Extracts 'vector_db' folder here
+            zf.extractall(str(WORK_DIR))
     except Exception:
         return False
 
     return writable_chroma_path.exists()
+
 
 @st.cache_data(show_spinner=False)
 def _load_players_index():
@@ -190,19 +185,23 @@ def _load_players_index():
         con.close()
         players = []
         for r in rows:
-            players.append({
-                "player_id": r[0],
-                "full_name": r[1] or "",
-                "position": r[2] or "",
-                "team_id": r[3] or "",
-                "class_year": r[4] or "",
-            })
+            players.append(
+                {
+                    "player_id": r[0],
+                    "full_name": r[1] or "",
+                    "position": r[2] or "",
+                    "team_id": r[3] or "",
+                    "class_year": r[4] or "",
+                }
+            )
         return players
     except Exception:
         return []
 
+
 def _norm_name(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
 
 def _looks_like_name(query: str) -> bool:
     q = (query or "").strip()
@@ -212,6 +211,7 @@ def _looks_like_name(query: str) -> bool:
         return False
     parts = q.split()
     return 1 <= len(parts) <= 3
+
 
 def _resolve_name_query(query: str):
     if not query or not _looks_like_name(query):
@@ -224,7 +224,6 @@ def _resolve_name_query(query: str):
     if exact:
         return {"mode": "exact_single" if len(exact) == 1 else "exact_multi", "matches": exact}
 
-    # fuzzy match
     scored = []
     for p in players:
         name_norm = _norm_name(p["full_name"])
@@ -240,6 +239,7 @@ def _resolve_name_query(query: str):
     if best >= 0.90:
         return {"mode": "fuzzy_multi", "matches": top}
     return {"mode": "none", "matches": []}
+
 
 @st.cache_data(show_spinner=False)
 def _lookup_player_id_by_name(name: str):
@@ -270,34 +270,33 @@ def _lookup_player_id_by_name(name: str):
     except Exception:
         try:
             con.close()
-        except:
+        except Exception:
             pass
         return None
+
 
 @st.cache_resource(show_spinner=False)
 def _get_search_collection():
     import chromadb
-    # IMPORTANT: Use the Writable Work Dir for Chroma
+
     vector_db_path = WORK_DIR / "vector_db"
-    
-    # Try to init client
     try:
-        # If folder doesn't exist, restore it first
         if not vector_db_path.exists():
             _restore_vector_db_if_needed()
-            
         client = chromadb.PersistentClient(path=str(vector_db_path))
         return client.get_collection(name="skout_plays")
     except Exception:
-        # Retry restore logic once
         _restore_vector_db_if_needed()
         client = chromadb.PersistentClient(path=str(vector_db_path))
         return client.get_collection(name="skout_plays")
 
+
 @st.cache_data(show_spinner=False, max_entries=50000)
 def _tag_play_cached(description: str) -> tuple[str, ...]:
     from src.processing.play_tagger import tag_play
+
     return tuple(tag_play(description or ""))
+
 
 def _required_tag_threshold(required_tags: list[str]) -> int:
     n = len(set([t for t in required_tags if t]))
@@ -307,15 +306,16 @@ def _required_tag_threshold(required_tags: list[str]) -> int:
         return 1
     return 2
 
-# SAFE QUERY PARAM HANDLING
+
 def _get_qp_safe():
     try:
         return st.query_params
     except (AttributeError, TypeError):
         try:
             return st.experimental_get_query_params()
-        except:
+        except Exception:
             return {}
+
 
 def _set_qp_safe(key, value):
     try:
@@ -325,8 +325,9 @@ def _set_qp_safe(key, value):
             params = st.experimental_get_query_params()
             params[key] = [str(value)]
             st.experimental_set_query_params(**params)
-        except:
+        except Exception:
             pass
+
 
 def _clear_qp_safe(key):
     try:
@@ -338,11 +339,11 @@ def _clear_qp_safe(key):
             if key in params:
                 del params[key]
                 st.experimental_set_query_params(**params)
-        except:
+        except Exception:
             pass
 
+
 def _get_player_profile(player_id: str):
-    """Fetch player profile with traits, stats, and plays."""
     pid = _normalize_player_id(player_id)
     if not pid:
         return None
@@ -390,7 +391,6 @@ def _get_player_profile(player_id: str):
             "high_school": row[7] if cols.get("high_school") else None,
         }
 
-        # traits
         cur.execute("SELECT * FROM player_traits WHERE player_id = ?", (pid,))
         trow = cur.fetchone()
         traits = {}
@@ -399,7 +399,6 @@ def _get_player_profile(player_id: str):
             traits = dict(zip(cols_t, trow))
         profile["traits"] = traits
 
-        # season stats
         cur.execute(
             """
             SELECT season_id, season_label, gp, possessions, points, fg_made, shot3_made, ft_made,
@@ -418,7 +417,7 @@ def _get_player_profile(player_id: str):
             points = srow[4] or 0
             reb = srow[13] or 0
             ast = srow[14] or 0
-            
+
             ppg = srow[17] if srow[17] is not None and srow[17] > 0 else (points / gp if gp > 0 else 0.0)
             rpg = srow[18] if srow[18] is not None and srow[18] > 0 else (reb / gp if gp > 0 else 0.0)
             apg = srow[19] if srow[19] is not None and srow[19] > 0 else (ast / gp if gp > 0 else 0.0)
@@ -448,12 +447,10 @@ def _get_player_profile(player_id: str):
         else:
             profile["stats"] = {}
 
-        # plays
         cur.execute("SELECT play_id, description, game_id, clock_display FROM plays WHERE player_id = ? LIMIT 25", (pid,))
         plays = cur.fetchall()
         profile["plays"] = plays
 
-        # matchups
         game_ids = list({p[2] for p in plays})
         matchups = {}
         if game_ids:
@@ -467,16 +464,17 @@ def _get_player_profile(player_id: str):
     except Exception:
         try:
             con.close()
-        except:
+        except Exception:
             pass
         return None
+
 
 def _build_video_search_query(profile: dict) -> str:
     name = profile.get("name") or ""
     school = profile.get("team_id") or ""
     hs = profile.get("high_school") or ""
-    api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-    model_name = os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL") or "gpt-4o-mini"
+    api_key = _get_secret("OPENAI_API_KEY")
+    model_name = _get_secret("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
 
     heuristic = f"\"{name}\" (\"{school}\" OR {school}) (\"{hs}\" OR {hs}) (basketball OR highlights OR mixtape) site:youtube.com"
 
@@ -513,8 +511,9 @@ High School: {hs}
     except Exception:
         return heuristic
 
+
 def _serper_video_search(query: str, num: int = 6) -> list[dict]:
-    api_key = os.getenv("SERPER_API_KEY") or st.secrets.get("SERPER_API_KEY")
+    api_key = _get_secret("SERPER_API_KEY")
     if not api_key:
         return []
     try:
@@ -529,6 +528,7 @@ def _serper_video_search(query: str, num: int = 6) -> list[dict]:
         return data.get("videos", []) or []
     except Exception:
         return []
+
 
 def _get_fallback_videos(profile: dict) -> list[str]:
     pid = _normalize_player_id(profile.get("player_id") or profile.get("id"))
@@ -546,6 +546,7 @@ def _get_fallback_videos(profile: dict) -> list[str]:
             urls.append(link)
     st.session_state[cache_key] = urls
     return urls
+
 
 def _render_profile_overlay(player_id: str):
     pid = _normalize_player_id(player_id)
@@ -656,19 +657,14 @@ def _render_profile_overlay(player_id: str):
             cols[2].metric("APG", _val(stats.get("apg")))
 
         st.markdown("### Scout Breakdown")
+        with st.spinner("The Old Recruiter is watching tape..."):
+            breakdown = generate_scout_breakdown(profile)
         
-        # Guard against missing module
-        if generate_scout_breakdown:
-            with st.spinner("The Old Recruiter is watching tape..."):
-                breakdown = generate_scout_breakdown(profile)
-            
-            breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
-            st.markdown(
-                f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-             st.warning("Scout logic module not loaded. Check logs.")
+        breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
+        st.markdown(
+            f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
+            unsafe_allow_html=True,
+        )
 
         from src.processing.play_tagger import tag_play
         plays = profile.get("plays", [])
@@ -902,7 +898,7 @@ def _render_profile_overlay(player_id: str):
             st.rerun()
         body()
 
-def check_ingestion_status():
+def check_ingestion_status() -> bool:
     _restore_vector_db_if_needed()
     db_path = WORK_DIR / "vector_db" / "chroma.sqlite3"
     return db_path.exists()
@@ -1156,17 +1152,13 @@ with st.sidebar:
 if st.session_state.app_mode == "Admin":
     render_header()
     st.caption("⚙️ Ingestion Pipeline & Settings")
-    # Robust admin path loading
     admin_path = REPO_ROOT / "src" / "admin" / "admin_content.py"
     if not admin_path.exists():
-        admin_path = REPO_ROOT / "admin_content.py"
+        admin_path = REPO_ROOT / "admin_content.py" # Fallback
     
     if admin_path.exists():
-        try:
-            code = admin_path.read_text(encoding="utf-8")
-            exec(compile(code, str(admin_path), "exec"), globals(), globals())
-        except Exception:
-            st.error(f"Admin Module Failed to Load:\n{traceback.format_exc()}")
+        code = admin_path.read_text(encoding="utf-8")
+        exec(compile(code, str(admin_path), "exec"), globals(), globals())
     else:
         st.error(f"Could not find {admin_path}")
 
@@ -1219,16 +1211,7 @@ elif st.session_state.app_mode == "Search":
             st.session_state["search_started_at"] = time.time()
 
     try:
-        # NOTE: Using writable WORK_DIR for search memory
-        mem_path = WORK_DIR / "search_memory.json"
-        # If it doesn't exist in writable, check read-only repo and copy it
-        if not mem_path.exists():
-             ro_mem_path = REPO_ROOT / "data" / "search_memory.json"
-             if ro_mem_path.exists():
-                 try:
-                     shutil.copy2(ro_mem_path, mem_path)
-                 except: pass
-
+        mem_path = REPO_ROOT / "data" / "search_memory.json"
         if mem_path.exists():
             memory = json.loads(mem_path.read_text())
             recent = list(reversed(memory.get("queries", [])))[:8]
