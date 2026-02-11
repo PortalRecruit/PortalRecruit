@@ -24,6 +24,53 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
+# --- 1B. SNOWFLAKE SESSION CONTEXT (prevents STAGE GET 090105) ---
+def _init_snowflake_context() -> None:
+    """
+    Ensures CURRENT_DATABASE/CURRENT_SCHEMA are set in Streamlit in Snowflake.
+    This avoids failures like: 090105 Cannot perform STAGE GET (no current database).
+    """
+    try:
+        from snowflake.snowpark.context import get_active_session  # type: ignore
+    except Exception:
+        return
+
+    def _secret(key: str) -> str | None:
+        try:
+            if key in st.secrets:
+                return str(st.secrets[key])
+            if "snowflake" in st.secrets and key in st.secrets["snowflake"]:
+                return str(st.secrets["snowflake"][key])
+        except Exception:
+            pass
+        v = os.getenv(key)
+        return str(v) if v else None
+
+    session = None
+    try:
+        session = get_active_session()
+    except Exception:
+        return
+
+    db = _secret("SNOWFLAKE_DATABASE") or _secret("database") or "PORTALRECRUIT_DB"
+    schema = _secret("SNOWFLAKE_SCHEMA") or _secret("schema") or "PORTALRECRUIT_SCHEMA"
+    wh = _secret("SNOWFLAKE_WAREHOUSE") or _secret("warehouse")
+
+    try:
+        if db:
+            session.sql(f'USE DATABASE "{db}"').collect()
+        if schema:
+            session.sql(f'USE SCHEMA "{schema}"').collect()
+        if wh:
+            session.sql(f'USE WAREHOUSE "{wh}"').collect()
+    except Exception:
+        # Don't hard-fail: app should still render useful errors elsewhere.
+        return
+
+
+_init_snowflake_context()
+
 # --- 2. ROBUST PATH & STORAGE SETUP ---
 # Strategy: REPO_ROOT is Read-Only. WORK_DIR (in /tmp) is Read-Write.
 try:
@@ -119,14 +166,28 @@ if css_path.exists():
 # --- 5. HELPER FUNCTIONS ---
 
 def _get_secret(name: str, default: str | None = None) -> str | None:
-    """Fetch a secret from env or Streamlit secrets without hard-failing in Snowflake."""
+    """
+    Fetch secret values in a Snowflake-safe way.
+
+    Precedence:
+      1) Streamlit secrets (Snowflake Secrets are surfaced here in Streamlit in Snowflake)
+      2) Env vars (local/dev)
+      3) default
+    """
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+        if "snowflake" in st.secrets and name in st.secrets["snowflake"]:
+            return str(st.secrets["snowflake"][name])
+    except Exception:
+        pass
+
     val = os.getenv(name)
     if val:
-        return val
-    try:
-        return st.secrets.get(name, default)  # type: ignore[attr-defined]
-    except Exception:
-        return default
+        return str(val)
+
+    return default
+
 
 
 def get_base64_image(image_path):
@@ -173,6 +234,60 @@ def _restore_vector_db_if_needed() -> bool:
         return False
 
     return writable_chroma_path.exists()
+
+
+def _fallback_play_search_sqlite(
+    query: str,
+    *,
+    n_results: int,
+    required_tags: list[str] | None,
+    boost_tags: list[str] | None,
+) -> list[str]:
+    """
+    Minimal Snowflake-safe fallback if Chroma/semantic search is unavailable.
+    Uses SQLite LIKE matching over plays.description and optional tag filtering.
+    Returns play_id list as strings.
+    """
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    terms = [t for t in re.split(r"\s+", query.lower()) if len(t) >= 3][:8]
+    if not terms:
+        return []
+
+    sql = "SELECT play_id, description FROM plays WHERE " + " AND ".join(["LOWER(description) LIKE ?"] * len(terms)) + " LIMIT ?"
+    params = [f"%{t}%" for t in terms] + [max(n_results * 5, 250)]
+
+    try:
+        con = sqlite3.connect(DB_PATH_STR)
+        cur = con.cursor()
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        con.close()
+    except Exception:
+        try:
+            con.close()
+        except Exception:
+            pass
+        return []
+
+    req = [t for t in (required_tags or []) if t]
+    boost = set([t for t in (boost_tags or []) if t])
+
+    scored: list[tuple[int, str]] = []
+    for play_id, desc in rows:
+        tags = set(_tag_play_cached(desc or ""))
+        if req and not tags.intersection(req):
+            continue
+        score = 0
+        if boost:
+            score += len(tags.intersection(boost)) * 3
+        score += sum(1 for t in terms if t in (desc or "").lower())
+        scored.append((score, str(play_id)))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [pid for _, pid in scored[:n_results]]
 
 
 @st.cache_data(show_spinner=False)
@@ -657,9 +772,14 @@ def _render_profile_overlay(player_id: str):
             cols[2].metric("APG", _val(stats.get("apg")))
 
         st.markdown("### Scout Breakdown")
+        st.markdown("### Scout Breakdown")
         with st.spinner("The Old Recruiter is watching tape..."):
-            breakdown = generate_scout_breakdown(profile)
-        
+            if not generate_scout_breakdown:
+                st.error("Scout module unavailable (src.llm.scout).")
+                breakdown = "Scout breakdown unavailable in this environment."
+            else:
+                breakdown = generate_scout_breakdown(profile)
+
         breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
         st.markdown(
             f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
@@ -1417,33 +1537,28 @@ elif st.session_state.app_mode == "Search":
         required_tags = [] # Default off
         st.session_state["last_query"] = query
         st.session_state["last_query_tags"] = intent_tags
+        collection = None
+        semantic_search = None
+        build_expanded_query = None
+        expand_query_terms = None
 
         try:
             collection = _get_search_collection()
-        except:
-            st.error("Vector DB not found.")
-            st.stop()
+            from src.search.semantic import build_expanded_query, semantic_search, expand_query_terms
+        except Exception:
+            collection = None
 
-        from src.search.semantic import build_expanded_query, semantic_search, expand_query_terms
-        expanded_terms = expand_query_terms(query)
-        expanded_query = build_expanded_query(query, (matched_phrases or []) + (expanded_terms or []))
+        expanded_terms = expand_query_terms(query) if expand_query_terms else []
+        expanded_query = build_expanded_query(query, (matched_phrases or []) + (expanded_terms or [])) if build_expanded_query else query
 
         status = st.status("Searching…", expanded=False)
         status.update(state="running")
         st.markdown("<script>document.body.classList.add('searching');</script>", unsafe_allow_html=True)
 
-        try:
-            play_ids = semantic_search(
-                collection,
-                query=query,
-                n_results=n_results,
-                extra_query_terms=(matched_phrases or []) + (expanded_terms or []),
-                required_tags=required_tags,
-                boost_tags=intent_tags,
-            )
-        except:
+        play_ids: list[str] = []
+
+        if collection is not None and semantic_search is not None:
             try:
-                collection = _get_search_collection()
                 play_ids = semantic_search(
                     collection,
                     query=query,
@@ -1452,12 +1567,20 @@ elif st.session_state.app_mode == "Search":
                     required_tags=required_tags,
                     boost_tags=intent_tags,
                 )
-            except:
-                st.error("Search index error.")
-                st.stop()
+            except Exception:
+                play_ids = []
+
+        if not play_ids:
+            play_ids = _fallback_play_search_sqlite(
+                query,
+                n_results=n_results,
+                required_tags=required_tags,
+                boost_tags=intent_tags,
+            )
+
         count_initial = len(play_ids)
 
-        if len(play_ids) < 8:
+        if len(play_ids) < 8 and collection is not None and semantic_search is not None:
             try:
                 play_ids = semantic_search(
                     collection,
