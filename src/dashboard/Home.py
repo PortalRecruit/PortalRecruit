@@ -823,6 +823,7 @@ try:
                 cols = st.columns([1, 7])
                 if cols[0].button("<", key="back_profile"):
                     _clear_qp("player")
+                    st.session_state["selected_player"] = None
                     st.rerun()
                 body()
             show_dialog()
@@ -831,6 +832,7 @@ try:
             cols = st.columns([1, 7])
             if cols[0].button("<", key="back_profile"):
                 _clear_qp("player")
+                st.session_state["selected_player"] = None
                 st.rerun()
             body()
     
@@ -1167,18 +1169,31 @@ try:
         # ---------------- SEARCH VIEW ----------------
         render_header()
     
-        # Route to player profile page via query params
+        # Route to player profile page via query params or session state
         qp = _get_qp()
-        if "player" in qp and qp["player"]:
+        target_pid = st.session_state.get("selected_player")
+        
+        # Fallback to URL if state is empty
+        if not target_pid and "player" in qp:
             raw_pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
-            pid = _normalize_player_id(raw_pid)
+            target_pid = _normalize_player_id(raw_pid)
+    
+        if target_pid:
+            pid = _normalize_player_id(target_pid)
+            
+            # Sync URL
+            st.query_params["player"] = pid
     
             # If profile exists in DB or is available from last search metadata, show it.
-            if _get_player_profile(pid) or (st.session_state.get("player_meta_cache", {}) or {}).get(pid):
+            meta_cache = st.session_state.get("player_meta_cache", {}) or {}
+            if _get_player_profile(pid) or meta_cache.get(pid):
+                st.session_state["selected_player"] = pid  # Ensure state is consistent
                 _render_profile_overlay(pid)
                 st.stop()
     
+            # If not found
             _clear_qp("player")
+            st.session_state["selected_player"] = None
             st.warning("Player not found.")
         
         # --- SEARCH INTERFACE ---
@@ -1307,6 +1322,7 @@ try:
                     label = " | ".join(detail_parts)
     
                     if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
+                        st.session_state["selected_player"] = pid
                         st.query_params["player"] = pid
                         st.rerun()
     
