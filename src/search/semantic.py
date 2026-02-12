@@ -258,6 +258,49 @@ def blend_score(vector_distance: float | None, rerank_score: float | None, tag_o
     return (0.55 * rerank) + (0.35 * vector_similarity) + (0.10 * float(tag_overlap))
 
 
+def _position_match_boost(query_terms: set[str], meta: dict | None) -> float:
+    if not meta or not query_terms:
+        return 0.0
+    pos = str(meta.get("position") or "").upper()
+    if not pos:
+        return 0.0
+    is_center = "C" in pos or "F/C" in pos
+    is_guard = "PG" in pos or "SG" in pos or pos == "G"
+    is_forward = "SF" in pos or "PF" in pos or pos == "F"
+    if ("CENTER" in query_terms or "5" in query_terms or "C" in query_terms) and is_center:
+        return 0.08
+    if ("POINT" in query_terms or "PG" in query_terms or "1" in query_terms) and is_guard:
+        return 0.08
+    if ("FORWARD" in query_terms or "SF" in query_terms or "PF" in query_terms or "WING" in query_terms) and is_forward:
+        return 0.08
+    return 0.0
+
+
+def hybrid_score(
+    vector_distance: float | None,
+    rerank_score: float | None,
+    tag_overlap: int,
+    lexical: float,
+    phrase_boost: float,
+    adj_boost: float,
+    position_boost: float = 0.0,
+    biometric_boost: float = 0.0,
+    tag_fallback_boost: float = 0.0,
+) -> tuple[float, dict]:
+    vector = blend_score(vector_distance, rerank_score, tag_overlap)
+    keyword = (0.10 * float(lexical)) + float(phrase_boost) + float(adj_boost) + float(tag_fallback_boost)
+    total = vector + keyword + float(position_boost) + float(biometric_boost)
+    total = max(0.0, min(1.0, total))
+    breakdown = {
+        "total": total,
+        "vector": vector,
+        "keyword": keyword,
+        "position_boost": float(position_boost),
+        "biometric_boost": float(biometric_boost),
+    }
+    return total, breakdown
+
+
 def semantic_search(
     collection,
     query: str,
@@ -269,7 +312,10 @@ def semantic_search(
     meta_filters: dict[str, set[str]] | None = None,
     biometric_tags: dict[str, set[str]] | None = None,
     strict_positions: set[str] | None = None,
-) -> list[str]:
+    return_breakdowns: bool = False,
+    alpha_override: float | None = None,
+    beta_override: float | None = None,
+) -> list[str] | tuple[list[str], dict[str, dict]]:
     """Run semantic search with normalized embeddings + optional rerank blend.
 
     Returns a list of play_ids ranked best-first.
@@ -283,6 +329,10 @@ def semantic_search(
     where_filter = None
     try:
         alpha, beta = _load_position_weights()
+        if alpha_override is not None:
+            alpha = float(alpha_override)
+        if beta_override is not None:
+            beta = float(beta_override)
         scores = score_positions(query, alpha_semantic=alpha, beta_size=beta)
         top = topk(scores, k=1)
         if top:
@@ -316,8 +366,15 @@ def semantic_search(
             include=["documents", "distances", "metadatas"],
             where=where_filter,
         )
+        ids = results.get("ids", [[]])[0]
+        if where_filter and not ids:
+            results = collection.query(
+                query_embeddings=[query_vec],
+                n_results=fetch_n,
+                include=["documents", "distances", "metadatas"],
+            )
     except Exception:
-        return []
+        return ([], {}) if return_breakdowns else []
 
     ids = results.get("ids", [[]])[0]
     docs = results.get("documents", [[]])[0]
@@ -325,7 +382,7 @@ def semantic_search(
     metadatas = results.get("metadatas", [[]])[0]
 
     if not ids:
-        return []
+        return ([], {}) if return_breakdowns else []
 
     required_tag_set = {str(t).strip().lower() for t in (required_tags or []) if str(t).strip()}
     boost_tag_set = {str(t).strip().lower() for t in (boost_tags or []) if str(t).strip()}
@@ -348,11 +405,6 @@ def semantic_search(
             if skip:
                 continue
         lexical = _lexical_overlap_score(query_tokens, doc, meta)
-        if biometric_tags and isinstance(meta, dict):
-            bio = str(meta.get("bio_tags") or "").lower()
-            for tag, allowed in biometric_tags.items():
-                if allowed and any(a in bio for a in allowed):
-                    lexical += 0.2
         if isinstance(meta, dict):
             pos = str(meta.get("position") or "").upper()
             is_center = "C" in pos or "F/C" in pos
@@ -385,6 +437,7 @@ def semantic_search(
             pairs = [[expanded_query, (doc or "")] for _, doc, _, _, _ in rerank_pool]
             rerank_scores = cross.predict(pairs, batch_size=16)
             ranked = []
+            breakdowns: dict[str, dict] = {}
             phrase_terms = ["point guards", "clutch"]
             adj_boost = _adjective_boost(query)
             for (pid, doc, dist, meta, lexical), rerank_score in zip(rerank_pool, rerank_scores):
@@ -395,16 +448,36 @@ def semantic_search(
                 elif boost_tag_set:
                     tag_overlap = len(meta_tags.intersection(boost_tag_set))
                 phrase_boost = _phrase_boost(doc, phrase_terms)
-                score = blend_score(dist, float(rerank_score), tag_overlap) + (0.10 * lexical) + phrase_boost + adj_boost
+                position_boost = _position_match_boost(query_terms, meta if isinstance(meta, dict) else None)
+                tag_fallback_boost = 0.0
                 if required_tag_set and used_tag_fallback:
-                    score += 0.08 * float(tag_overlap)
+                    tag_fallback_boost += 0.08 * float(tag_overlap)
                 if boost_tag_set and tag_overlap:
-                    score += 0.05 * float(tag_overlap)
-                score = max(0.0, min(1.0, score))
+                    tag_fallback_boost += 0.05 * float(tag_overlap)
+                bio_boost = 0.0
+                if isinstance(meta, dict) and biometric_tags:
+                    bio = str(meta.get("bio_tags") or "").lower()
+                    for _tag, allowed in biometric_tags.items():
+                        if allowed and any(a in bio for a in allowed):
+                            bio_boost += 0.2
+                score, breakdown = hybrid_score(
+                    dist,
+                    float(rerank_score),
+                    tag_overlap,
+                    lexical,
+                    phrase_boost,
+                    adj_boost,
+                    position_boost=position_boost,
+                    biometric_boost=bio_boost,
+                    tag_fallback_boost=tag_fallback_boost,
+                )
                 ranked.append((pid, score))
+                breakdowns[pid] = breakdown
             ranked.sort(key=lambda x: x[1], reverse=True)
             ranked_ids = [r[0] for r in ranked]
             if not diversify_by_player:
+                if return_breakdowns:
+                    return ranked_ids[:requested_n], {pid: breakdowns.get(pid, {}) for pid in ranked_ids[:requested_n]}
                 return ranked_ids[:requested_n]
             # Light diversity pass: avoid flooding top results with one player.
             max_per_player = 2 if requested_n >= 12 else 1
@@ -434,8 +507,12 @@ def semantic_search(
                     selected.append(pid)
                     if len(selected) >= requested_n:
                         break
+            if return_breakdowns:
+                return selected, {pid: breakdowns.get(pid, {}) for pid in selected}
             return selected
     except Exception:
-        return [row[0] for row in candidates[:requested_n]]
+        ids = [row[0] for row in candidates[:requested_n]]
+        return (ids, {}) if return_breakdowns else ids
 
-    return [row[0] for row in candidates[:requested_n]]
+    ids = [row[0] for row in candidates[:requested_n]]
+    return (ids, {}) if return_breakdowns else ids

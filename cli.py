@@ -195,7 +195,7 @@ def run_search(query: str, n_results: int = 5, debug: bool = False, media: bool 
     # TODO: Replace local Chroma call with Synergy/SportRadar search endpoint
     client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
     collection = client.get_collection(name="skout_plays")
-    play_ids = semantic_search(collection, query=query, n_results=n_results)
+    play_ids, breakdowns = semantic_search(collection, query=query, n_results=n_results, return_breakdowns=True)
 
     meta_lookup: Dict[str, Dict[str, Any]] = {}
     try:
@@ -251,8 +251,11 @@ def run_search(query: str, n_results: int = 5, debug: bool = False, media: bool 
         if not video_link:
             video_link = f"https://mock.synergy.com/video/{play_id}.mp4"
 
-        score = _lexical_overlap_score(query_tokens, desc, {"tags": tags})
-        score = min(1.0, max(0.0, score))
+        breakdown = breakdowns.get(play_id) or {}
+        score = breakdown.get("total")
+        if score is None:
+            score = _lexical_overlap_score(query_tokens, desc, {"tags": tags})
+            score = min(1.0, max(0.0, score))
         snippet = _best_snippet(desc, query)
 
         results.append({
@@ -268,6 +271,7 @@ def run_search(query: str, n_results: int = 5, debug: bool = False, media: bool 
             "video": video_link,
             "meta": meta,
             "original_desc": meta.get("original_desc") if meta else None,
+            "breakdown": breakdown,
         })
 
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -286,7 +290,13 @@ def run_search(query: str, n_results: int = 5, debug: bool = False, media: bool 
         video_out = r['video'] if r.get('video') else r['file']
         name_out = f"{ANSI_BLUE_BOLD}{r['player_name']}{ANSI_RESET}"
         snippet_out = _colorize_outcome(r['snippet'], r.get('tags', ""))
-        print(f"[{i+1}] Score: {r['score']:.2f} | Player: {name_out}")
+        breakdown = r.get("breakdown") or {}
+        vec = breakdown.get("vector") or 0.0
+        pos_boost = breakdown.get("position_boost") or 0.0
+        bio_boost = breakdown.get("biometric_boost") or 0.0
+        kw = breakdown.get("keyword") or 0.0
+        breakdown_str = f"(Vec: {vec:.2f} | Pos: {pos_boost:.2f} | Bio: {bio_boost:.2f} | Key: {kw:.2f})"
+        print(f"[{i+1}] Score: {r['score']:.2f} {breakdown_str} | Player: {name_out}")
         print(f" Matchup: {_format_matchup(r['matchup'], r['clock'])}")
         print(f" Snippet: {snippet_out}")
         print(f" Tags: [{r['tags']}]\n Video: {video_out}")

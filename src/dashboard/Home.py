@@ -1025,6 +1025,31 @@ def _render_profile_overlay(player_id: str):
             </div>
         """, unsafe_allow_html=True)
 
+        with st.expander("👁️ AI Vision Analysis"):
+            from src.biometrics import analyze_physique
+            vision = None
+            vision_error = None
+            try:
+                vision = analyze_physique(player_image_url)
+            except Exception as e:
+                vision_error = str(e)
+            if vision_error:
+                st.error(f"Vision analysis failed: {vision_error}")
+            elif vision is None:
+                st.warning("Vision analysis unavailable (missing API key, request failed, or image not suitable).")
+            else:
+                if isinstance(vision, dict) and "raw" in vision:
+                    raw = str(vision.get("raw") or "").strip()
+                    if raw:
+                        if "jersey" in raw.lower() or "unable" in raw.lower():
+                            st.warning(raw)
+                        else:
+                            st.code(raw)
+                    else:
+                        st.json(vision)
+                else:
+                    st.json(vision)
+
         cache = st.session_state.get("player_meta_cache", {}) or {}
         meta_cache = cache.get(pid, {}) if pid else {}
         score = meta_cache.get("score")
@@ -1601,6 +1626,12 @@ with st.sidebar:
     st.session_state.app_mode = mode
     st.divider()
 
+    st.markdown("### Search Configuration")
+    search_alpha = st.slider("Alpha (Semantic)", 0.0, 5.0, 1.2, 0.1)
+    search_beta = st.slider("Beta (Size)", 0.0, 10.0, 3.0, 0.1)
+    st.session_state["search_alpha"] = search_alpha
+    st.session_state["search_beta"] = search_beta
+
 if st.session_state.app_mode == "Admin":
     render_header()
     st.caption("⚙️ Ingestion Pipeline & Settings")
@@ -1770,6 +1801,27 @@ elif st.session_state.app_mode == "Search":
                         _set_qp_safe("player", pid)
                         st.rerun()
 
+                    breakdown = clips[0].get("Score Breakdown") if clips else {}
+                    if isinstance(breakdown, dict) and breakdown:
+                        vec = float(breakdown.get("vector") or 0.0)
+                        pos_boost = float(breakdown.get("position_boost") or 0.0)
+                        bio_boost = float(breakdown.get("biometric_boost") or 0.0)
+                        kw = float(breakdown.get("keyword") or 0.0)
+
+                        def _grade(val: float) -> str:
+                            if val >= 0.35:
+                                return "High"
+                            if val >= 0.20:
+                                return "Medium"
+                            return "Low"
+
+                        vector_label = _grade(vec)
+                        size_label = "Elite" if bio_boost >= 0.25 else ("Solid" if bio_boost >= 0.15 else "Low")
+                        st.caption(
+                            f"Match Quality: {vector_label} (Vector) | Size Fit: {size_label} (Bio)"
+                            f" — Vec {vec:.2f} | Pos {pos_boost:.2f} | Bio {bio_boost:.2f} | Key {kw:.2f}"
+                        )
+
                     extra = []
                     if clips[0].get("Class") and clips[0].get("Class") != "—": extra.append(f"Class: {clips[0].get('Class')}")
                     if clips[0].get("High School") and clips[0].get("High School") != "—": extra.append(f"HS: {clips[0].get('High School')}")
@@ -1926,35 +1978,46 @@ elif st.session_state.app_mode == "Search":
 
         cache_key = _search_cache_key(query, intent_tags, required_tags, n_results)
         cached_play_ids = _cache_get(cache_key)
+        search_alpha = float(st.session_state.get("search_alpha", 1.2))
+        search_beta = float(st.session_state.get("search_beta", 3.0))
+        breakdowns = {}
         if cached_play_ids is not None:
             play_ids = cached_play_ids
         else:
             if vector_search_ready and collection is not None:
                 try:
-                    play_ids = semantic_search(
+                    play_ids, breakdowns = semantic_search(
                         collection,
                         query=query,
                         n_results=n_results,
                         extra_query_terms=(matched_phrases or []) + (expanded_terms or []),
                         required_tags=required_tags,
                         boost_tags=intent_tags,
+                        return_breakdowns=True,
+                        alpha_override=search_alpha,
+                        beta_override=search_beta,
                     )
                 except:
                     play_ids = []
+                    breakdowns = {}
 
                 if not play_ids:
                     try:
                         collection = _get_search_collection()
-                        play_ids = semantic_search(
+                        play_ids, breakdowns = semantic_search(
                             collection,
                             query=query,
                             n_results=n_results,
                             extra_query_terms=(matched_phrases or []) + (expanded_terms or []),
                             required_tags=required_tags,
                             boost_tags=intent_tags,
+                            return_breakdowns=True,
+                            alpha_override=search_alpha,
+                            beta_override=search_beta,
                         )
                     except:
                         play_ids = []
+                        breakdowns = {}
 
                 if not play_ids:
                     vector_search_ready = False
@@ -1979,10 +2042,11 @@ elif st.session_state.app_mode == "Search":
 
             _cache_set(cache_key, play_ids)
         count_initial = len(play_ids)
+        st.session_state["search_breakdowns"] = breakdowns or {}
 
         if vector_search_ready and collection is not None and len(play_ids) < 8:
             try:
-                play_ids = semantic_search(
+                play_ids, breakdowns = semantic_search(
                     collection,
                     query=expanded_query,
                     n_results=max(n_results, 200),
@@ -1990,6 +2054,9 @@ elif st.session_state.app_mode == "Search":
                     required_tags=[],
                     boost_tags=intent_tags,
                     diversify_by_player=False,
+                    return_breakdowns=True,
+                    alpha_override=search_alpha,
+                    beta_override=search_beta,
                 )
             except:
                 st.error("Search index error.")
@@ -2257,6 +2324,7 @@ elif st.session_state.app_mode == "Search":
             _stage("Confirming arrival of the Old Recruiter at Prospect's local gym...", "#7bdcb5")
 
             rows = []
+            breakdown_lookup = st.session_state.get("search_breakdowns", {}) or {}
             for pid, desc, gid, clock, player_id, player_name in play_rows:
                 pid_norm = _normalize_player_id(player_id)
                 mapped_pid = player_id_map.get(pid_norm) or pid_norm
@@ -2507,6 +2575,7 @@ elif st.session_state.app_mode == "Search":
                     "Play": _best_play_snippet(desc, query),
                     "Video": video or "-",
                     "Score": round(score, 2),
+                    "Score Breakdown": breakdown_lookup.get(pid) or {},
                 })
 
             st.session_state['debug_counts'] = debug_counts
