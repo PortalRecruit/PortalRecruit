@@ -383,7 +383,7 @@ def _cache_set(key, value, max_size: int = 50):
         cache.popitem(last=False)
 
 
-def _best_play_snippet(desc: str, query: str, max_len: int = 180) -> str:
+def _best_play_snippet(desc: str, query: str, max_len: int = 240) -> str:
     text = (desc or "").strip()
     if not text:
         return ""
@@ -394,8 +394,9 @@ def _best_play_snippet(desc: str, query: str, max_len: int = 180) -> str:
     idxs = [lower.find(t) for t in q_tokens if lower.find(t) >= 0]
     if not idxs:
         return text if len(text) <= max_len else text[: max_len - 1] + "…"
-    start = max(min(idxs) - 40, 0)
-    end = min(start + max_len, len(text))
+    extra = 20 if "clutch" in lower else 0
+    start = max(min(idxs) - 50, 0)
+    end = min(start + max_len + extra, len(text))
     snippet = text[start:end]
     if start > 0:
         snippet = "…" + snippet
@@ -2214,6 +2215,10 @@ elif st.session_state.app_mode == "Search":
                         continue
                     if "big" in role_hints and "big" not in pos_tags:
                         continue
+                    q_lower = (query or "").lower()
+                    if "point guard" in q_lower or "pg" in q_lower:
+                        if not ("PG" in pos or "POINT" in pos):
+                            continue
 
                 debug_counts['after_position_filters'] += 1
 

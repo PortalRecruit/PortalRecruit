@@ -193,6 +193,23 @@ def _lexical_overlap_score(query_tokens: set[str], doc: str | None, meta: dict |
     return float(overlap) + (0.5 * float(tag_overlap))
 
 
+def _phrase_boost(doc: str | None, phrases: Iterable[str]) -> float:
+    if not doc:
+        return 0.0
+    lower = doc.lower()
+    boost = 0.0
+    for phrase in phrases:
+        if phrase and phrase.lower() in lower:
+            boost += 0.15
+    return boost
+
+
+def _adjective_boost(query: str) -> float:
+    q = (query or "").lower()
+    adjectives = ["unselfish", "clutch", "athletic", "tough", "physical", "explosive", "lengthy", "rangy"]
+    return 0.10 if any(a in q for a in adjectives) else 0.0
+
+
 def blend_score(vector_distance: float | None, rerank_score: float | None, tag_overlap: int = 0) -> float:
     # Chroma returns cosine distance for hnsw cosine space (smaller is better).
     # Convert to similarity-like component in [roughly 0,1+].
@@ -271,14 +288,17 @@ def semantic_search(
             pairs = [[expanded_query, (doc or "")] for _, doc, _, _, _ in rerank_pool]
             rerank_scores = cross.predict(pairs, batch_size=16)
             ranked = []
-            for (pid, _doc, dist, meta, lexical), rerank_score in zip(rerank_pool, rerank_scores):
+            phrase_terms = ["point guards", "clutch"]
+            adj_boost = _adjective_boost(query)
+            for (pid, doc, dist, meta, lexical), rerank_score in zip(rerank_pool, rerank_scores):
                 meta_tags = _parse_tags(meta)
                 tag_overlap = 0
                 if required_tag_set:
                     tag_overlap = len(meta_tags.intersection(required_tag_set))
                 elif boost_tag_set:
                     tag_overlap = len(meta_tags.intersection(boost_tag_set))
-                score = blend_score(dist, float(rerank_score), tag_overlap) + (0.10 * lexical)
+                phrase_boost = _phrase_boost(doc, phrase_terms)
+                score = blend_score(dist, float(rerank_score), tag_overlap) + (0.10 * lexical) + phrase_boost + adj_boost
                 if required_tag_set and used_tag_fallback:
                     score += 0.08 * float(tag_overlap)
                 if boost_tag_set and tag_overlap:
