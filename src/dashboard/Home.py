@@ -935,8 +935,33 @@ def _render_profile_overlay(player_id: str):
     title = profile.get("name", "Player Profile")
 
     def body():
+        from src.social_media import serper_search, select_best_video, select_best_image, build_video_query, build_image_query
+        player_image_url = None
+        video_id = None
+        cache_key = f"media_{pid}"
+        cached_media = st.session_state.get(cache_key)
+        if cached_media:
+            player_image_url = cached_media.get("image")
+            video_id = cached_media.get("video_id")
+        else:
+            try:
+                team_name = str(profile.get("team_id") or "")
+                v_query = build_video_query(title, team_name)
+                i_query = build_image_query(title, team_name)
+                v_results = serper_search(v_query, type="videos")
+                i_results = serper_search(i_query, type="images")
+                video_id = select_best_video(v_results, title)
+                player_image_url = select_best_image(i_results, title)
+                st.session_state[cache_key] = {"image": player_image_url, "video_id": video_id, "video_query": v_query, "image_query": i_query}
+            except Exception:
+                pass
+
+        if not player_image_url:
+            player_image_url = "https://portalrecruit.github.io/PortalRecruit/PRLOGO.png"
+
         st.markdown(f"""
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <img src="{player_image_url}" style="width:72px; height:72px; border-radius:12px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);" />
                 <h2 style="margin:0; padding:0; color:white; font-size:2rem;">{title}</h2>
             </div>
         """, unsafe_allow_html=True)
@@ -1077,39 +1102,65 @@ def _render_profile_overlay(player_id: str):
                 filtered.append((play_id, desc, game_id, clock, tags))
 
         clips = filtered if filtered else [(p[0], p[1], p[2], p[3], set(_tag_play_cached(p[1]))) for p in plays]
-        st.markdown("### Film Room")
-        if clips:
-            vid_items = []
-            for play_id, desc, game_id, clock, tags in clips:
-                home, away, video = matchups.get(game_id, ("Unknown", "Unknown", None))
-                if video:
-                    vid_items.append({
-                        "play_id": play_id,
-                        "desc": desc,
-                        "game": f"{home} vs {away}",
-                        "clock": clock,
-                        "video": video,
-                        "tags": tags,
-                    })
-            uniq = []
-            seen = set()
-            for v in vid_items:
-                if v["video"] in seen:
-                    continue
-                seen.add(v["video"])
-                uniq.append(v)
+        tab_film, tab_social = st.tabs(["Film Room", "Social Media Scout"])
 
-            top3 = uniq[:3]
-            if top3:
-                cols = st.columns(3)
-                for i, v in enumerate(top3):
-                    with cols[i % 3]:
-                        st.markdown(f"**{v['game']}**")
-                        st.caption(v["clock"])
-                        st.video(v["video"], start_time=0)
-                if len(uniq) > 3:
-                    if st.button("See more", key=f"see_more_{pid}"):
-                        st.session_state[f"show_more_videos_{pid}"] = True
+        with tab_film:
+            st.markdown("### Film Room")
+            if clips:
+                vid_items = []
+                for play_id, desc, game_id, clock, tags in clips:
+                    home, away, video = matchups.get(game_id, ("Unknown", "Unknown", None))
+                    if video:
+                        vid_items.append({
+                            "play_id": play_id,
+                            "desc": desc,
+                            "game": f"{home} vs {away}",
+                            "clock": clock,
+                            "video": video,
+                            "tags": tags,
+                        })
+                uniq = []
+                seen = set()
+                for v in vid_items:
+                    if v["video"] in seen:
+                        continue
+                    seen.add(v["video"])
+                    uniq.append(v)
+
+                top3 = uniq[:3]
+                if top3:
+                    cols = st.columns(3)
+                    for i, v in enumerate(top3):
+                        with cols[i % 3]:
+                            st.markdown(f"**{v['game']}**")
+                            st.caption(v["clock"])
+                            st.video(v["video"], start_time=0)
+                    if len(uniq) > 3:
+                        if st.button("See more", key=f"see_more_{pid}"):
+                            st.session_state[f"show_more_videos_{pid}"] = True
+                else:
+                    fallback = _get_fallback_videos(profile)
+                    if fallback:
+                        st.caption("No Synergy clips available — showing web‑found video highlights.")
+                        cols = st.columns(3)
+                        for i, vurl in enumerate(fallback[:3]):
+                            with cols[i % 3]:
+                                st.video(vurl)
+                        if len(fallback) > 3:
+                            st.button("See more", key=f"see_more_web_{pid}")
+                    else:
+                        st.caption("No video clips available.")
+
+                if st.session_state.get(f"show_more_videos_{pid}"):
+                    st.markdown("#### All Relevant Clips")
+                    cols = st.columns(3)
+                    for i, v in enumerate(uniq):
+                        with cols[i % 3]:
+                            st.markdown(f"**{v['game']}**")
+                            st.caption(v["clock"])
+                            st.video(v["video"], start_time=0)
+                    if st.button("Close", key=f"close_more_{pid}"):
+                        st.session_state[f"show_more_videos_{pid}"] = False
             else:
                 fallback = _get_fallback_videos(profile)
                 if fallback:
@@ -1121,30 +1172,14 @@ def _render_profile_overlay(player_id: str):
                     if len(fallback) > 3:
                         st.button("See more", key=f"see_more_web_{pid}")
                 else:
-                    st.caption("No video clips available.")
+                    st.caption("No clips available for this player.")
 
-            if st.session_state.get(f"show_more_videos_{pid}"):
-                st.markdown("#### All Relevant Clips")
-                cols = st.columns(3)
-                for i, v in enumerate(uniq):
-                    with cols[i % 3]:
-                        st.markdown(f"**{v['game']}**")
-                        st.caption(v["clock"])
-                        st.video(v["video"], start_time=0)
-                if st.button("Close", key=f"close_more_{pid}"):
-                    st.session_state[f"show_more_videos_{pid}"] = False
-        else:
-            fallback = _get_fallback_videos(profile)
-            if fallback:
-                st.caption("No Synergy clips available — showing web‑found video highlights.")
-                cols = st.columns(3)
-                for i, vurl in enumerate(fallback[:3]):
-                    with cols[i % 3]:
-                        st.video(vurl)
-                if len(fallback) > 3:
-                    st.button("See more", key=f"see_more_web_{pid}")
+        with tab_social:
+            st.markdown("### Social Media Scout")
+            if video_id:
+                st.video(f"https://www.youtube.com/watch?v={video_id}")
             else:
-                st.caption("No clips available for this player.")
+                st.caption("No social video found yet.")
 
         st.markdown("### Social Media Scouting Report")
         report = _get_social_report(pid)
