@@ -1769,6 +1769,9 @@ elif st.session_state.app_mode == "Search":
                     boost_tags=intent_tags,
                 )
             except:
+                play_ids = []
+
+            if not play_ids:
                 try:
                     collection = _get_search_collection()
                     play_ids = semantic_search(
@@ -1780,15 +1783,25 @@ elif st.session_state.app_mode == "Search":
                         boost_tags=intent_tags,
                     )
                 except:
-                    vector_search_ready = False
-                    play_ids = _keyword_search_play_ids(
-                        query,
-                        extra_terms=(matched_phrases or []) + (expanded_terms or []),
-                        limit=max(n_results, 150),
-                    )
+                    play_ids = []
+
+            if not play_ids:
+                vector_search_ready = False
+                play_ids = _keyword_search_play_ids(
+                    query,
+                    extra_terms=(matched_phrases or []) + (expanded_terms or []),
+                    limit=max(n_results, 150),
+                )
         else:
             play_ids = _keyword_search_play_ids(
                 query,
+                extra_terms=(matched_phrases or []) + (expanded_terms or []),
+                limit=max(n_results, 150),
+            )
+
+        if not play_ids and expanded_query:
+            play_ids = _keyword_search_play_ids(
+                expanded_query,
                 extra_terms=(matched_phrases or []) + (expanded_terms or []),
                 limit=max(n_results, 150),
             )

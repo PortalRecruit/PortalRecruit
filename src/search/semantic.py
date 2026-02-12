@@ -84,8 +84,23 @@ def expand_query_terms(query: str) -> list[str]:
     return list(dict.fromkeys([t for t in terms if t]))
 
 
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "to", "for", "of", "in", "on", "with", "at", "by",
+    "from", "into", "up", "down", "over", "under", "is", "are", "was", "were", "be", "been",
+    "can", "could", "should", "would", "i", "we", "they", "you", "he", "she", "it", "that",
+}
+
+
+def _normalize_query(query: str) -> str:
+    q = (query or "").strip().lower()
+    if not q:
+        return ""
+    tokens = [t for t in re.findall(r"[a-z0-9']+", q) if t and t not in _STOPWORDS]
+    return " ".join(tokens) if tokens else q
+
+
 def encode_query(query: str) -> list[float]:
-    return _encode_query_cached((query or "").strip())
+    return _encode_query_cached(_normalize_query(query))
 
 
 @lru_cache(maxsize=512)
@@ -167,7 +182,7 @@ def blend_score(vector_distance: float | None, rerank_score: float | None, tag_o
     # Convert to similarity-like component in [roughly 0,1+].
     vector_similarity = 0.0 if vector_distance is None else max(0.0, 1.0 - float(vector_distance))
     rerank = 0.0 if rerank_score is None else float(rerank_score)
-    return (0.60 * rerank) + (0.35 * vector_similarity) + (0.05 * float(tag_overlap))
+    return (0.55 * rerank) + (0.35 * vector_similarity) + (0.10 * float(tag_overlap))
 
 
 def semantic_search(
@@ -185,13 +200,17 @@ def semantic_search(
     """
     expanded_query = build_expanded_query(query, extra_query_terms)
     requested_n = max(int(n_results), 1)
-    fetch_n = min(max(requested_n * 3, requested_n), 100)
+    fetch_n = min(max(requested_n * 4, requested_n), 150)
 
-    results = collection.query(
-        query_embeddings=[encode_query(expanded_query)],
-        n_results=fetch_n,
-        include=["documents", "distances", "metadatas"],
-    )
+    try:
+        query_vec = encode_query(expanded_query)
+        results = collection.query(
+            query_embeddings=[query_vec],
+            n_results=fetch_n,
+            include=["documents", "distances", "metadatas"],
+        )
+    except Exception:
+        return []
 
     ids = results.get("ids", [[]])[0]
     docs = results.get("documents", [[]])[0]
