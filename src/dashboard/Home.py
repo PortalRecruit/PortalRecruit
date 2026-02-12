@@ -818,6 +818,10 @@ def _render_profile_overlay(player_id: str):
 
     if not profile:
         st.warning("Player not found.")
+        if st.button("Back to search results", key=f"back_missing_{pid or 'unknown'}"):
+            _clear_qp_safe("player")
+            st.session_state["selected_player"] = None
+            st.rerun()
         return
     title = profile.get("name", "Player Profile")
 
@@ -1425,16 +1429,13 @@ elif st.session_state.app_mode == "Search":
 
     if target_pid:
         pid = _normalize_player_id(target_pid)
-        _set_qp_safe("player", pid)
-        meta_cache = st.session_state.get("player_meta_cache", {}) or {}
-        if _get_player_profile(pid) or meta_cache.get(pid):
+        if pid:
+            _set_qp_safe("player", pid)
             st.session_state["selected_player"] = pid
             _render_profile_overlay(pid)
             st.stop()
-        
         _clear_qp_safe("player")
         st.session_state["selected_player"] = None
-        st.warning("Player not found.")
     
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
