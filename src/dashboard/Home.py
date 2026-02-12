@@ -346,6 +346,55 @@ def _expand_query_synonyms(q: str) -> list[str]:
             synonyms.extend(vs)
     return synonyms
 
+
+def _ensure_player_id_map(conn) -> None:
+    """Ensure a mapping table exists to bridge play.player_id -> players.player_id."""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_id_map (
+                play_player_id TEXT PRIMARY KEY,
+                player_id TEXT,
+                full_name TEXT
+            )
+            """
+        )
+        cur.execute("SELECT COUNT(*) FROM player_id_map")
+        count = cur.fetchone()[0] or 0
+        if count == 0:
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO player_id_map (play_player_id, player_id, full_name)
+                SELECT pl.player_id, p.player_id, p.full_name
+                FROM plays pl
+                JOIN players p ON LOWER(pl.player_name) = LOWER(p.full_name)
+                WHERE pl.player_id IS NOT NULL AND p.player_id IS NOT NULL
+                """
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
+@st.cache_data(show_spinner=False)
+def _load_player_id_map() -> dict:
+    try:
+        conn = sqlite3.connect(DB_PATH_STR)
+        cur = conn.cursor()
+        cur.execute("SELECT play_player_id, player_id FROM player_id_map")
+        mapping = {}
+        for play_pid, player_pid in cur.fetchall():
+            play_norm = _normalize_player_id(play_pid)
+            player_norm = _normalize_player_id(player_pid)
+            if play_norm and player_norm:
+                mapping[play_norm] = player_norm
+        conn.close()
+        return mapping
+    except Exception:
+        return {}
+
+
 def _restore_vector_db_if_needed() -> bool:
     """Rebuild vector_db from split zip parts if missing."""
     db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
@@ -1784,6 +1833,9 @@ elif st.session_state.app_mode == "Search":
                 conn.commit()
             except: pass
 
+            _ensure_player_id_map(conn)
+            player_id_map = _load_player_id_map()
+
             placeholders = ",".join(["?"] * len(play_ids))
             cur.execute(
                 f"""
@@ -1808,10 +1860,15 @@ elif st.session_state.app_mode == "Search":
                 'final_rows': 0,
             }
 
-            player_ids = [r[4] for r in play_rows if r[4]]
+            mapped_player_ids = []
+            for r in play_rows:
+                play_pid = _normalize_player_id(r[4])
+                mapped_pid = player_id_map.get(play_pid) or play_pid
+                if mapped_pid:
+                    mapped_player_ids.append(mapped_pid)
             traits = {}
-            if player_ids:
-                ph2 = ",".join(["?"] * len(set(player_ids)))
+            if mapped_player_ids:
+                ph2 = ",".join(["?"] * len(set(mapped_player_ids)))
                 cur.execute(
                     f"""
                     SELECT player_id, dog_index, menace_index, unselfish_index,
@@ -1821,7 +1878,7 @@ elif st.session_state.app_mode == "Search":
                     FROM player_traits
                     WHERE player_id IN ({ph2})
                     """,
-                    list(set(player_ids)),
+                    list(set(mapped_player_ids)),
                 )
                 traits = {
                     _normalize_player_id(r[0]): {
@@ -1965,13 +2022,20 @@ elif st.session_state.app_mode == "Search":
                     cur2.execute("SELECT p.player_id, p.offense_team, p.defense_team, p.is_home, p.game_id FROM plays p WHERE p.player_id IS NOT NULL")
                     counts = {}
                     for pid, off_t, def_t, is_home, gid in cur2.fetchall():
-                        if off_t: counts[(pid, off_t)] = counts.get((pid, off_t), 0) + 1
-                        if def_t: counts[(pid, def_t)] = counts.get((pid, def_t), 0) + 1
+                        pid_norm = _normalize_player_id(pid)
+                        pid_mapped = player_id_map.get(pid_norm) or pid_norm
+                        if not pid_mapped:
+                            continue
+                        if off_t: counts[(pid_mapped, off_t)] = counts.get((pid_mapped, off_t), 0) + 1
+                        if def_t: counts[(pid_mapped, def_t)] = counts.get((pid_mapped, def_t), 0) + 1
                     if not counts:
                         cur2.execute("SELECT p.player_id, p.is_home, g.home_team, g.away_team FROM plays p JOIN games g ON g.game_id = p.game_id WHERE p.player_id IS NOT NULL AND g.home_team IS NOT NULL AND g.away_team IS NOT NULL")
                         for pid, is_home, home, away in cur2.fetchall():
+                            pid_norm = _normalize_player_id(pid)
+                            pid_mapped = player_id_map.get(pid_norm) or pid_norm
                             team = home if is_home else away
-                            if team: counts[(pid, team)] = counts.get((pid, team), 0) + 1
+                            if pid_mapped and team:
+                                counts[(pid_mapped, team)] = counts.get((pid_mapped, team), 0) + 1
                     for (pid, team), cnt in sorted(counts.items(), key=lambda x: -x[1]):
                         if pid not in player_team_guess: player_team_guess[pid] = team
                 except: pass
@@ -2011,14 +2075,15 @@ elif st.session_state.app_mode == "Search":
             rows = []
             for pid, desc, gid, clock, player_id, player_name in play_rows:
                 pid_norm = _normalize_player_id(player_id)
-                meta = player_meta.get(pid_norm) if pid_norm else None
+                mapped_pid = player_id_map.get(pid_norm) or pid_norm
+                meta = player_meta.get(mapped_pid) if mapped_pid else None
                 if meta is None and player_name:
                     meta = player_meta_by_name.get(_norm_person_name(player_name))
                 if meta is None:
                     continue
                 debug_counts['meta_found'] += 1
                 
-                t = traits.get(pid_norm, {}) if pid_norm else {}
+                t = traits.get(mapped_pid, {}) if mapped_pid else {}
                 dog_index = t.get("dog")
                 menace_index = t.get("menace")
                 unselfish_index = t.get("unselfish")
@@ -2049,7 +2114,7 @@ elif st.session_state.app_mode == "Search":
                 debug_counts['after_tag_filters'] += 1
 
                 if numeric_filters:
-                    pstats = player_stats.get(pid_norm, {}) if pid_norm else {}
+                    pstats = player_stats.get(mapped_pid, {}) if mapped_pid else {}
                     allow = True
                     for comp, val, stat in numeric_filters:
                         stat_val = None
@@ -2063,7 +2128,7 @@ elif st.session_state.app_mode == "Search":
 
                 debug_counts['after_numeric_filters'] += 1
 
-                pos = (player_positions.get(pid_norm) or "").upper() if pid_norm else ""
+                pos = (player_positions.get(mapped_pid) or "").upper() if mapped_pid else ""
                 if pos:
                     pos_tags = _position_tags(pos)
                     if "guard" in role_hints and "guard" not in pos_tags:
@@ -2190,7 +2255,8 @@ elif st.session_state.app_mode == "Search":
 
                 meta = {}
                 pid_norm = _normalize_player_id(player_id)
-                if "player_meta" in locals() and pid_norm: meta = player_meta.get(pid_norm, {})
+                mapped_pid = player_id_map.get(pid_norm) or pid_norm
+                if "player_meta" in locals() and mapped_pid: meta = player_meta.get(mapped_pid, {})
                 if not meta and "player_meta_by_name" in locals(): meta = player_meta_by_name.get(_norm_person_name(player_name or ""), {})
 
                 pos_val = meta.get("position", "")
@@ -2199,9 +2265,9 @@ elif st.session_state.app_mode == "Search":
                 wt_val = meta.get("weight_lb")
                 class_val = meta.get("class_year", "")
                 hs_val = meta.get("high_school", "")
-                ppg_val = (player_stats.get(pid_norm) or {}).get("ppg") if pid_norm else None
-                rpg_val = (player_stats.get(pid_norm) or {}).get("rpg") if pid_norm else None
-                apg_val = (player_stats.get(pid_norm) or {}).get("apg") if pid_norm else None
+                ppg_val = (player_stats.get(mapped_pid) or {}).get("ppg") if mapped_pid else None
+                rpg_val = (player_stats.get(mapped_pid) or {}).get("rpg") if mapped_pid else None
+                apg_val = (player_stats.get(mapped_pid) or {}).get("apg") if mapped_pid else None
                 pos_val = pos_val if pos_val not in [None, "", "None"] else "—"
                 team_val = team_val if team_val not in [None, "", "None"] else "—"
                 class_val = class_val if class_val not in [None, "", "None"] else "—"
@@ -2211,7 +2277,7 @@ elif st.session_state.app_mode == "Search":
                     if len(team_clean) > 16 and team_clean.replace("-", "").isalnum() and " " not in team_clean:
                         team_val = team_name_by_id.get(team_val, "—")
                 if team_val == "—" and player_team_guess:
-                    team_val = player_team_guess.get(player_id, "—")
+                    team_val = player_team_guess.get(mapped_pid, "—")
                 if team_val == "—": team_val = "Unknown"
 
                 debug_counts['final_rows'] = debug_counts.get('final_rows',0)
@@ -2223,7 +2289,7 @@ elif st.session_state.app_mode == "Search":
                     "Match": f"{home} vs {away}",
                     "Clock": clock,
                     "Player": (player_name or "Unknown"),
-                    "Player ID": player_id,
+                    "Player ID": mapped_pid or player_id,
                     "Position": pos_val,
                     "Team": team_val,
                     "Height": ht_val,
