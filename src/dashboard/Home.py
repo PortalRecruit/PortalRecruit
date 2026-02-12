@@ -137,24 +137,23 @@ try:
             <style>
               #pr-bg-video {{
                 position: fixed;
-                right: 0;
-                bottom: 0;
+                top: 50%;
+                left: 50%;
                 min-width: 100%;
                 min-height: 100%;
                 width: auto;
                 height: auto;
+                transform: translate(-50%, -50%);
+                object-fit: cover;
                 z-index: -3;
-                filter: blur(18px) saturate(1.2) contrast(1.05);
-                opacity: 0.28;
-                transform: scale(1.05);
+                opacity: 0.6;
               }}
               .pr-bg-overlay {{
                 position: fixed;
                 inset: 0;
                 z-index: -2;
-                background: radial-gradient(1200px 700px at 50% 20%, rgba(255,141,26,0.14), rgba(0,0,0,0) 60%),
-                            radial-gradient(900px 600px at 20% 70%, rgba(122,162,247,0.10), rgba(0,0,0,0) 60%),
-                            linear-gradient(180deg, rgba(8,10,20,0.92), rgba(8,10,20,0.86));
+                background: linear-gradient(90deg, rgba(2,6,23,0.95), rgba(2,6,23,0.75)),
+                            linear-gradient(180deg, rgba(2,6,23,0.85), rgba(2,6,23,0.90));
               }}
               /* Glass containers */
               .pr-glass {{
