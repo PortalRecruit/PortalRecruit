@@ -1650,6 +1650,13 @@ with st.sidebar:
     st.session_state["search_alpha"] = search_alpha
     st.session_state["search_beta"] = search_beta
 
+    from src.roster import get_roster
+    roster = get_roster()
+    st.markdown(f"### 📋 My Shortlist ({len(roster)})")
+    for p in roster[:8]:
+        pname = p.get("name") or p.get("Player") or p.get("player_name") or "Unknown"
+        st.caption(pname)
+
 if st.session_state.app_mode == "Admin":
     render_header()
     st.caption("⚙️ Ingestion Pipeline & Settings")
@@ -1674,9 +1681,10 @@ if st.session_state.app_mode == "Admin":
 
 elif st.session_state.app_mode == "Search":
     render_header()
-    tabs = st.tabs(["Search", "⚔️ Comparator"])
+    tabs = st.tabs(["Search", "⚔️ Comparator", "🏢 War Room"])
     search_tab = tabs[0]
     compare_tab = tabs[1]
+    war_room_tab = tabs[2]
 
     with search_tab:
         qp = _get_qp_safe()
@@ -1823,6 +1831,19 @@ elif st.session_state.app_mode == "Search":
                             st.session_state["selected_player"] = pid
                             _set_qp_safe("player", pid)
                             st.rerun()
+
+                        from src.roster import add_player
+                        if st.button("⭐ Add to Shortlist", key=f"shortlist_{pid}"):
+                            add_player({
+                                "player_id": pid,
+                                "name": player,
+                                "position": pos,
+                                "team": team,
+                                "height_in": ht,
+                                "weight_lb": wt,
+                                "class_year": clips[0].get("Class") if clips else "",
+                            })
+                            st.toast(f"Added {player} to shortlist.")
 
                         breakdown = clips[0].get("Score Breakdown") if clips else {}
                         if isinstance(breakdown, dict) and breakdown:
@@ -2656,3 +2677,27 @@ elif st.session_state.app_mode == "Search":
                             st.markdown(comp.get("fit_diff", ""))
                 except Exception as e:
                     st.error(f"Comparison failed: {e}")
+    with war_room_tab:
+        st.markdown("### 🏢 War Room")
+        from src.roster import get_roster, clear_roster
+        from src.exporter import generate_synergy_csv, generate_text_report
+        roster = get_roster()
+        if st.button("🧹 Clear Shortlist"):
+            clear_roster()
+            st.rerun()
+        if roster:
+            avg_height = sum([r.get("height_in") or 0 for r in roster]) / max(1, len(roster))
+            avg_weight = sum([r.get("weight_lb") or 0 for r in roster]) / max(1, len(roster))
+            pos_counts = {}
+            for r in roster:
+                pos = r.get("position") or "Unknown"
+                pos_counts[pos] = pos_counts.get(pos, 0) + 1
+            st.markdown(f"**Average Height:** {avg_height:.1f} in | **Average Weight:** {avg_weight:.1f} lb")
+            st.markdown("**Positional Breakdown:** " + ", ".join([f"{k}: {v}" for k, v in pos_counts.items()]))
+            st.dataframe(roster, use_container_width=True)
+            csv_data = generate_synergy_csv(roster)
+            report = generate_text_report(roster)
+            st.download_button("⬇️ Export for Synergy (CSV)", csv_data, file_name="roster_export.csv")
+            st.download_button("📄 Download Report (TXT)", report, file_name="roster_report.txt")
+        else:
+            st.info("Shortlist is empty.")

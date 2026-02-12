@@ -398,6 +398,10 @@ if __name__ == "__main__":
     c.add_argument("player_b")
     c.add_argument("--query", default="Big Guard")
 
+    s_list = sub.add_parser("shortlist")
+    s_list.add_argument("action", choices=["add", "view", "export", "clear"])
+    s_list.add_argument("name", nargs="?")
+
     sub.add_parser("interactive")
 
     args = parser.parse_args()
@@ -424,6 +428,42 @@ if __name__ == "__main__":
         print(comp.get("rpg_diff"))
         print(comp.get("apg_diff"))
         print(comp.get("fit_diff"))
+    elif args.command == "shortlist":
+        from src.roster import add_player, get_roster, clear_roster
+        from src.exporter import generate_synergy_csv
+        if args.action == "add":
+            if not args.name:
+                print("Provide a player name to add.")
+                sys.exit(1)
+            conn = sqlite3.connect(DB_PATH)
+            profile = _get_player_profile(conn, None, args.name)
+            conn.close()
+            if not profile:
+                print("Player not found in DB.")
+                sys.exit(1)
+            added = add_player({
+                "player_id": profile.get("player_id"),
+                "name": profile.get("name"),
+                "team": profile.get("team_id"),
+                "position": profile.get("position"),
+                "height_in": profile.get("height_in"),
+                "weight_lb": profile.get("weight_lb"),
+                "class_year": profile.get("class_year"),
+            })
+            print("Added to shortlist." if added else "Already in shortlist.")
+        elif args.action == "view":
+            roster = get_roster()
+            for p in roster:
+                print(f"{p.get('name')} | {p.get('team')} | {p.get('position')}")
+        elif args.action == "export":
+            roster = get_roster()
+            csv_data = generate_synergy_csv(roster)
+            with open("roster_export.csv", "w", encoding="utf-8") as f:
+                f.write(csv_data)
+            print("Saved roster_export.csv")
+        elif args.action == "clear":
+            clear_roster()
+            print("Shortlist cleared.")
     elif args.command == "interactive":
         run_interactive()
     else:
