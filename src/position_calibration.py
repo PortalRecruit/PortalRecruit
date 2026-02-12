@@ -607,3 +607,23 @@ def calibrate_all(
         "group_size_updates": group_updates,
         "weights": weights,
     }
+
+
+def load_model_bundle(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        bundle = json.load(f)
+
+    priors = bundle.get("position_size_priors") or {}
+    if priors:
+        apply_position_priors(priors)
+
+    term_groups = bundle.get("term_groups") or {}
+    group_updates: Dict[str, Dict[str, Any]] = {}
+    for gid, group in term_groups.items():
+        if isinstance(group, dict) and "size_evidence" in group:
+            group_updates[gid] = group.get("size_evidence")
+
+    if group_updates:
+        apply_group_size_updates(group_updates)
+
+    return bundle.get("weights") or {}

@@ -1,0 +1,336 @@
+{
+  "canonical_positions": [
+    "POINT_GUARD",
+    "SHOOTING_GUARD",
+    "SMALL_FORWARD",
+    "POWER_FORWARD",
+    "CENTER",
+    "GUARD",
+    "FORWARD"
+  ],
+  "position_size_priors": {
+    "CENTER": {
+      "h_mu": 82.75,
+      "h_sigma": 2.0615528128088303,
+      "w_mu": 245.0,
+      "w_sigma": 10.0
+    },
+    "FORWARD": {
+      "h_mu": 79.0,
+      "h_sigma": 1.4142135623730951,
+      "w_mu": 210.0,
+      "w_sigma": 7.0710678118654755
+    },
+    "GUARD": {
+      "h_mu": 72.5,
+      "h_sigma": 0.7071067811865476,
+      "w_mu": 182.5,
+      "w_sigma": 3.5355339059327378
+    },
+    "POINT_GUARD": {
+      "h_mu": 73.0,
+      "h_sigma": 2.2,
+      "w_mu": 180.0,
+      "w_sigma": 18.0
+    },
+    "POWER_FORWARD": {
+      "h_mu": 80.0,
+      "h_sigma": 2.3,
+      "w_mu": 235.0,
+      "w_sigma": 25.0
+    },
+    "SHOOTING_GUARD": {
+      "h_mu": 75.0,
+      "h_sigma": 2.3,
+      "w_mu": 195.0,
+      "w_sigma": 20.0
+    },
+    "SMALL_FORWARD": {
+      "h_mu": 79.0,
+      "h_sigma": 0.001,
+      "w_mu": 212.5,
+      "w_sigma": 10.606601717798213
+    }
+  },
+  "term_groups": {
+    "BIG_GENERAL": {
+      "patterns": [
+        "\\bbig\\b",
+        "\\bbig\\s+man\\b",
+        "\\bpost\\b",
+        "\\bpost\\s+player\\b",
+        "\\binterior\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.85,
+          "primary": "CENTER",
+          "secondary": [
+            "POWER_FORWARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "BIG_GUARD": {
+      "patterns": [
+        "\\bbig\\s+guard\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.85,
+          "primary": "GUARD",
+          "secondary": [
+            "SHOOTING_GUARD",
+            "POINT_GUARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_delta_mu": 0.0,
+        "h_delta_sigma": 1.6,
+        "mode": "delta",
+        "n": 0,
+        "w_delta_mu": 0.0,
+        "w_delta_sigma": 18.0
+      }
+    },
+    "NUM_FIVE": {
+      "patterns": [
+        "\\bthe\\s*5\\b",
+        "\\b5\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.95,
+          "primary": "CENTER"
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "NUM_FOUR": {
+      "patterns": [
+        "\\bthe\\s*4\\b",
+        "\\b4\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.95,
+          "primary": "POWER_FORWARD"
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "NUM_ONE": {
+      "patterns": [
+        "\\bthe\\s*1\\b",
+        "\\b1\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.95,
+          "primary": "POINT_GUARD"
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "NUM_THREE": {
+      "patterns": [
+        "\\bthe\\s*3\\b",
+        "\\b3\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.95,
+          "primary": "SMALL_FORWARD"
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "NUM_TWO": {
+      "patterns": [
+        "\\bthe\\s*2\\b",
+        "\\b2\\b",
+        "\\btwo[-\\s]*guard\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.95,
+          "primary": "SHOOTING_GUARD"
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "RIM_PROTECTION": {
+      "patterns": [
+        "\\brim\\s+protector\\b",
+        "\\bshot\\s+block(er|ing)\\b",
+        "\\banchor\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.9,
+          "primary": "CENTER",
+          "secondary": [
+            "POWER_FORWARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "ROLL_DIVE": {
+      "patterns": [
+        "\\broll\\s+man\\b",
+        "\\broller\\b",
+        "\\bdive\\s+man\\b",
+        "\\brim\\s+runner\\b",
+        "\\bvertical\\s+spacer\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.85,
+          "primary": "CENTER",
+          "secondary": [
+            "POWER_FORWARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "SMALL_GUARD": {
+      "patterns": [
+        "\\bsmall\\s+guard\\b",
+        "\\bquick\\s+guard\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.75,
+          "primary": "POINT_GUARD",
+          "secondary": [
+            "GUARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_delta_mu": 0.0,
+        "h_delta_sigma": 1.6,
+        "mode": "delta",
+        "n": 0,
+        "w_delta_mu": 0.0,
+        "w_delta_sigma": 18.0
+      }
+    },
+    "STRETCH_BIG": {
+      "patterns": [
+        "\\bstretch\\s*4\\b",
+        "\\bstretch\\s*five\\b",
+        "\\bstretch\\s*5\\b",
+        "\\bpick[-\\s]*and[-\\s]*pop\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.8,
+          "primary": "POWER_FORWARD",
+          "secondary": [
+            "CENTER"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    },
+    "WING_GENERAL": {
+      "patterns": [
+        "\\bwing\\b",
+        "\\bswingman\\b",
+        "\\b(perimeter\\s+forward)\\b"
+      ],
+      "semantic_votes": [
+        {
+          "confidence": 0.9,
+          "primary": "SMALL_FORWARD",
+          "secondary": [
+            "SHOOTING_GUARD"
+          ]
+        }
+      ],
+      "size_evidence": {
+        "h_mu": 79.2,
+        "h_sigma": 4.157990967870046,
+        "mode": "absolute",
+        "n": 0,
+        "w_mu": 219.0,
+        "w_sigma": 26.01281735350223
+      }
+    }
+  },
+  "weights": {
+    "alpha_semantic": 0.1,
+    "beta_size": 1.665479232997366,
+    "note": "logreg fit on [semantic, size] features; magnitudes used as scales",
+    "raw_coef_sem": 0.0,
+    "raw_coef_size": 1.665479232997366
+  }
+}

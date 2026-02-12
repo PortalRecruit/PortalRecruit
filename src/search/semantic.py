@@ -14,6 +14,20 @@ os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "60")
 
 
 @lru_cache(maxsize=1)
+def _load_position_weights() -> tuple[float, float]:
+    try:
+        from src.position_calibration import load_model_bundle
+
+        weights = load_model_bundle("position_model.json")
+        alpha = float(weights.get("alpha_semantic", 1.0))
+        beta = float(weights.get("beta_size", 1.0))
+        print(f"Loaded Position Model (alpha={alpha:.3f}, beta={beta:.3f})")
+        return alpha, beta
+    except Exception:
+        return 1.0, 1.0
+
+
+@lru_cache(maxsize=1)
 def get_embedder(model_name: str = EMBED_MODEL_NAME):
     from sentence_transformers import SentenceTransformer
 
@@ -268,7 +282,8 @@ def semantic_search(
 
     where_filter = None
     try:
-        scores = score_positions(query, alpha_semantic=1.0, beta_size=1.0)
+        alpha, beta = _load_position_weights()
+        scores = score_positions(query, alpha_semantic=alpha, beta_size=beta)
         top = topk(scores, k=1)
         if top:
             canon, score = top[0]
