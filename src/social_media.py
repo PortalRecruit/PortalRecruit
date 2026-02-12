@@ -104,4 +104,4 @@ def build_video_query(player_name: str, team_name: str) -> str:
 
 
 def build_image_query(player_name: str, team_name: str) -> str:
-    return f'"{player_name}" "{team_name}" basketball jersey'
+    return f'"{player_name}" "{team_name}" basketball game photo -card -ebay -jersey'

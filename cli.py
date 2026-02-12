@@ -318,9 +318,14 @@ def run_search(query: str, n_results: int = 5, debug: bool = False, media: bool 
         profile = _get_player_profile(conn, results[0].get("player_id") if results else None, results[0].get("player_name") if results else None)
         if profile is not None:
             profile["image_url"] = media_img
+            if not profile.get("height_in") or not profile.get("weight_lb"):
+                profile["height_in"] = results[0].get("height_in") if results else profile.get("height_in")
+                profile["weight_lb"] = results[0].get("weight_lb") if results else profile.get("weight_lb")
+                profile["position"] = results[0].get("position") if results else profile.get("position")
             bio = generate_biometric_tags(profile)
             print("\n🧍 Biometric Tags")
             print("-" * 50)
+            print(f"Height: {profile.get('height_in')} | Weight: {profile.get('weight_lb')} | Position: {profile.get('position')}")
             print(f"Math Tags: {bio.get('math_tags')}")
             print(f"Vision: {bio.get('vision')}")
             print(f"All Tags: {bio.get('tags')}")

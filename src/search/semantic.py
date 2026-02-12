@@ -253,6 +253,7 @@ def semantic_search(
     boost_tags: Iterable[str] | None = None,
     diversify_by_player: bool = True,
     meta_filters: dict[str, set[str]] | None = None,
+    biometric_tags: dict[str, set[str]] | None = None,
 ) -> list[str]:
     """Run semantic search with normalized embeddings + optional rerank blend.
 
@@ -297,6 +298,11 @@ def semantic_search(
             if skip:
                 continue
         lexical = _lexical_overlap_score(query_tokens, doc, meta)
+        if biometric_tags and isinstance(meta, dict):
+            bio = str(meta.get("bio_tags") or "").lower()
+            for tag, allowed in biometric_tags.items():
+                if allowed and any(a in bio for a in allowed):
+                    lexical += 0.2
         candidates.append((pid, doc, dist, meta, lexical))
 
     candidates, used_tag_fallback = _filter_candidates_by_tags(candidates, required_tag_set, requested_n)

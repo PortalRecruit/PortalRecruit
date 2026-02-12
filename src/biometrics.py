@@ -43,17 +43,32 @@ def calculate_relative_size(height_in: Optional[float], weight_lb: Optional[floa
     pos_key = _norm_position(position)
     avg_h, avg_w = POSITION_AVERAGES.get(pos_key, (76, 200))
 
+    # positional tag
+    if pos_key in {"PG", "SG", "G"}:
+        tags.append("guard")
+    elif pos_key in {"SF", "PF", "F"}:
+        tags.append("wing")
+    elif pos_key == "C":
+        tags.append("big")
+
     if height_in is not None:
+        if height_in >= max(78, avg_h - 1):
+            tags += ["tall"]
         if height_in > avg_h + 2:
-            tags += ["tall", "big"]
+            tags += ["big"]
         elif height_in < avg_h - 2:
             tags += ["undersized"]
 
     if weight_lb is not None:
+        if weight_lb >= avg_w:
+            tags += ["strong"]
         if weight_lb > avg_w + 15:
-            tags += ["heavy", "strong"]
+            tags += ["heavy"]
         elif weight_lb < avg_w - 15:
             tags += ["lanky", "skinny"]
+
+    if not tags:
+        tags.append("average")
 
     return list(dict.fromkeys(tags))
 
@@ -110,12 +125,20 @@ def generate_biometric_tags(player_data: Dict[str, Any]) -> Dict[str, Any]:
 
     tags = list(math_tags)
     if isinstance(vision, dict):
-        build = vision.get("build") or vision.get("Build")
-        conditioning = vision.get("conditioning") or vision.get("Conditioning")
-        if build:
-            tags.append(str(build).lower())
-        if conditioning:
-            tags.append(str(conditioning).lower())
+        raw = str(vision.get("raw") or "").lower()
+        if "unable" in raw or "jersey" in raw:
+            vision = None
+        else:
+            build = vision.get("build") or vision.get("Build")
+            conditioning = vision.get("conditioning") or vision.get("Conditioning")
+            if build:
+                tags.append(str(build).lower())
+            if conditioning:
+                tags.append(str(conditioning).lower())
+
+    if not tags:
+        tags = list(math_tags)
+
     return {
         "math_tags": math_tags,
         "vision": vision,
