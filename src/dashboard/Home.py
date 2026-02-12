@@ -1,6 +1,5 @@
 import traceback
 import streamlit as st
-import streamlit.components.v1 as components
 import sys
 import os
 import re
@@ -10,8 +9,6 @@ import base64
 import time
 import zipfile
 import sqlite3
-import shutil
-import tempfile
 from pathlib import Path
 from difflib import SequenceMatcher
 import requests
@@ -24,114 +21,30 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(
-    """
-    <style>
-      .block-container { max-width: 1200px; padding-top: 2.0rem; }
-      h1, h2, h3 { letter-spacing: -0.02em; }
-      .pr-hero {
-        background: radial-gradient(1200px 400px at 50% 0%, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 22px;
-        padding: 22px 22px 18px 22px;
-        margin: 8px 0 18px 0;
-        backdrop-filter: blur(10px);
-      }
-      .pr-subtle { opacity: 0.78; }
-      div[data-testid="stForm"] { margin-top: 12px; }
-      button[kind="primary"] { border-radius: 14px !important; }
-      button { border-radius: 14px !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 # --- 2. ROBUST PATH SETUP ---
 # Snowflake often changes where files are mounted. We dynamically find the 'src' folder.
 try:
-    # Resolve project root robustly across:
-    # - Local dev
-    # - Streamlit Cloud
-    # - Streamlit in Snowflake (read-only app dir, writable /tmp)
     current_path = Path(__file__).resolve()
-    probe = current_path.parent
-
-    def _has_marker(p: Path) -> bool:
-        return (
-            (p / "data" / "skout.db").exists()
-            and (p / "www" / "streamlit.css").exists()
-            and (p / "src" / "dashboard" / "admin_content.py").exists()
-        )
-
-    for _ in range(12):
-        if _has_marker(probe):
+    repo_root = current_path.parent
+    
+    # Walk up the tree until we find 'src' or hit the root
+    for _ in range(5):
+        if (repo_root / "src").exists():
             break
-        if probe == probe.parent:
+        if repo_root == repo_root.parent: # Reached system root
             break
-        probe = probe.parent
-
-    # Fallback: first ancestor containing "src"
-    if not _has_marker(probe):
-        probe2 = current_path.parent
-        for _ in range(12):
-            if (probe2 / "src").exists():
-                probe = probe2
-                break
-            if probe2 == probe2.parent:
-                break
-            probe2 = probe2.parent
-
-    REPO_ROOT = probe
-
+        repo_root = repo_root.parent
+        
+    REPO_ROOT = repo_root
+    
+    # CRITICAL FIX: Force string conversion for sys.path
     root_str = str(REPO_ROOT)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
 
-    # Writable workspace (Snowflake-friendly). Streamlit Cloud also supports /tmp.
-    WORK_DIR = Path(tempfile.gettempdir()) / "portal_recruit_workspace"
-    WORK_DIR.mkdir(parents=True, exist_ok=True)
-
-    # SQLite DB: read from repo, operate on a writable copy in WORK_DIR
-    RO_DB_PATH = REPO_ROOT / "data" / "skout.db"
-    RW_DB_PATH = WORK_DIR / "skout.db"
-    if not RW_DB_PATH.exists() and RO_DB_PATH.exists():
-        shutil.copy2(RO_DB_PATH, RW_DB_PATH)
-
-    DB_PATH_STR = str(RW_DB_PATH if RW_DB_PATH.exists() else RO_DB_PATH)
-
-    # Best-effort: set Snowflake session context if running in Streamlit-in-Snowflake
-    try:
-        from snowflake.snowpark.context import get_active_session  # type: ignore
-
-        session = get_active_session()
-
-        def _pick(*keys: str) -> str | None:
-            for k in keys:
-                try:
-                    if k in st.secrets:
-                        return str(st.secrets[k])
-                    if "snowflake" in st.secrets and k in st.secrets["snowflake"]:
-                        return str(st.secrets["snowflake"][k])
-                except Exception:
-                    pass
-                v = os.getenv(k)
-                if v:
-                    return v
-            return None
-
-        db = _pick("SNOWFLAKE_DATABASE", "database", "DB")
-        schema = _pick("SNOWFLAKE_SCHEMA", "schema")
-        wh = _pick("SNOWFLAKE_WAREHOUSE", "warehouse", "WH")
-
-        if db:
-            session.sql(f'USE DATABASE "{db}"').collect()
-        if schema:
-            session.sql(f'USE SCHEMA "{schema}"').collect()
-        if wh:
-            session.sql(f'USE WAREHOUSE "{wh}"').collect()
-    except Exception:
-        pass
+    # CRITICAL FIX: Force string conversion for DB path
+    DB_PATH = REPO_ROOT / "data" / "skout.db"
+    DB_PATH_STR = str(DB_PATH)
 
 except Exception as e:
     st.error(f"Critical Path Error: {e}")
@@ -181,6 +94,92 @@ except:
     pass
 
 
+
+# --- 4b. GLASS BACKGROUND VIDEO (Cloud + Snowflake) ---
+try:
+    bg_video_path = REPO_ROOT / "www" / "PORTALRECRUIT_ANIMATED_LOGO.mp4"
+    if bg_video_path.exists():
+        b64 = base64.b64encode(bg_video_path.read_bytes()).decode("utf-8")
+        components.html(
+            f"""
+            <style>
+              #pr-bg-video {{
+                position: fixed;
+                right: 0;
+                bottom: 0;
+                min-width: 100%;
+                min-height: 100%;
+                width: auto;
+                height: auto;
+                z-index: -3;
+                filter: blur(18px) saturate(1.2) contrast(1.05);
+                opacity: 0.28;
+                transform: scale(1.05);
+              }}
+              .pr-bg-overlay {{
+                position: fixed;
+                inset: 0;
+                z-index: -2;
+                background: radial-gradient(1200px 700px at 50% 20%, rgba(255,141,26,0.14), rgba(0,0,0,0) 60%),
+                            radial-gradient(900px 600px at 20% 70%, rgba(122,162,247,0.10), rgba(0,0,0,0) 60%),
+                            linear-gradient(180deg, rgba(8,10,20,0.92), rgba(8,10,20,0.86));
+              }}
+              /* Glass containers */
+              .pr-glass {{
+                background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 18px;
+                box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+              }}
+              .pr-result-card {{
+                padding: 16px 16px;
+                border-radius: 18px;
+                border: 1px solid rgba(255,140,20,0.55);
+                box-shadow:
+                  0 0 0 1px rgba(255,140,20,0.10) inset,
+                  0 0 22px rgba(255,140,20,0.22),
+                  0 16px 44px rgba(0,0,0,0.40);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+                transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+              }}
+              .pr-result-card:hover {{
+                transform: translateY(-2px);
+                border-color: rgba(255,140,20,0.80);
+                box-shadow:
+                  0 0 0 1px rgba(255,140,20,0.18) inset,
+                  0 0 30px rgba(255,140,20,0.35),
+                  0 20px 54px rgba(0,0,0,0.50);
+              }}
+              .pr-chip {{
+                display: inline-flex;
+                align-items: center;
+                padding: 4px 10px;
+                border-radius: 999px;
+                border: 1px solid rgba(255,255,255,0.14);
+                background: rgba(255,255,255,0.06);
+                font-size: 0.85rem;
+                opacity: 0.92;
+              }}
+              /* tighten the main container */
+              section.main > div.block-container {{
+                max-width: 1180px;
+                padding-top: 1.6rem;
+              }}
+            </style>
+            <video id="pr-bg-video" autoplay muted loop playsinline>
+              <source src="data:video/mp4;base64,{b64}" type="video/mp4" />
+            </video>
+            <div class="pr-bg-overlay"></div>
+            """,
+            height=0,
+        )
+except Exception:
+    pass
+
 # --- 5. HELPER FUNCTIONS ---
 
 def get_base64_image(image_path):
@@ -194,68 +193,257 @@ def get_base64_image(image_path):
     except Exception:
         return None
 
-def _restore_vector_db_if_needed() -> bool:
-    """Ensure a writable Chroma vector DB exists under WORK_DIR.
 
-    Preference order:
-    1) If WORK_DIR/vector_db/chroma.sqlite3 exists -> done.
-    2) If repo has data/vector_db folder -> copytree into WORK_DIR (fast + reliable on Cloud).
-    3) Else, if repo has vector_db.zip(.part*) -> reconstruct into WORK_DIR and extract.
-    """
-    writable_chroma = WORK_DIR / "vector_db" / "chroma.sqlite3"
-    if writable_chroma.exists():
+def _position_tags(pos: str) -> set[str]:
+    """Normalize position strings into role tags: guard/wing/big."""
+    p = (pos or "").upper().strip()
+    if not p:
+        return set()
+    tags: set[str] = set()
+    if any(x in p for x in ["PG", "SG"]) or ("G" in p and "F" not in p and "C" not in p):
+        tags.add("guard")
+    if any(x in p for x in ["SF", "PF"]) or ("F" in p) or ("W" in p):
+        tags.add("wing")
+    if "C" in p or "F/C" in p or "C/F" in p:
+        tags.add("big")
+    # combos like G/F, F/G, F-C etc
+    if "G" in p and "F" in p:
+        tags.update({"guard", "wing"})
+    if "F" in p and "C" in p:
+        tags.update({"wing", "big"})
+    return tags
+
+
+def _infer_size_intents(q: str) -> dict:
+    """Extract size/physical development intents from the query."""
+    ql = (q or "").lower()
+
+    # explicit height tokens like 6'8, 6-8, 6 8, 7 footer
+    height_min = None
+    height_max = None
+    m = re.search(r"(\d)\s*['-]?\s*(\d{1,2})\s*(?:\"|in)?", ql)
+    if m:
+        ft = int(m.group(1))
+        inch = int(m.group(2))
+        h = ft * 12 + inch
+        height_min = h - 1
+        height_max = h + 2
+
+    if any(k in ql for k in ["tall", "long", "length", "rangy", "wingspan", "big wingspan"]):
+        height_min = max(height_min or 0, 77)  # ~6'5+
+    if any(k in ql for k in ["big", "huge", "strong", "power", "physical", "burly"]):
+        # weight intent, not absolute requirement
+        pass
+    if any(k in ql for k in ["skinny", "lean", "lanky", "thin"]):
+        pass
+
+    growth = any(k in ql for k in ["room to grow", "upside", "project", "raw", "high ceiling", "frame to add", "fill out"])
+
+    # position-relative cues
+    wants_big = any(k in ql for k in ["big man", "rim protector", "post", "paint", "center"])
+    wants_guard = any(k in ql for k in ["point guard", "pg", "guard", "ball handler"])
+    wants_forward = any(k in ql for k in ["forward", "sf", "pf", "wing", "3-and-d"])
+
+    # soft thresholds (applied only when query implies size)
+    if wants_big:
+        height_min = max(height_min or 0, 79)  # 6'7+
+    if wants_guard and any(k in ql for k in ["tall", "big", "long"]):
+        height_min = max(height_min or 0, 75)  # 6'3+
+    if wants_forward:
+        height_min = max(height_min or 0, 76)  # 6'4+
+
+    return {
+        "height_min": height_min,
+        "height_max": height_max,
+        "growth": growth,
+        "skinny": any(k in ql for k in ["skinny", "lean", "lanky", "thin"]),
+        "strong": any(k in ql for k in ["strong", "physical", "powerful", "burly", "thick"]),
+    }
+
+
+def _infer_role_hints(q: str) -> set[str]:
+    """Extract role hints (guard/wing/big) with robust synonym coverage."""
+    ql = (q or "").lower()
+    hints: set[str] = set()
+
+    wing_terms = [
+        "forward", "sf", "small forward", "pf", "power forward", "wing", "3-and-d", "three and d", "combo forward"
+    ]
+    guard_terms = [
+        "guard", "pg", "point guard", "sg", "shooting guard", "combo guard", "lead guard"
+    ]
+    big_terms = [
+        "center", "big man", "rim protector", "post", "paint", "big", "five", "4/5", "4-5"
+    ]
+    if any(k in ql for k in wing_terms):
+        hints.add("wing")
+    if any(k in ql for k in guard_terms):
+        hints.add("guard")
+    if any(k in ql for k in big_terms):
+        hints.add("big")
+
+    # common abbreviations like 'c' as a token
+    toks = re.findall(r"[a-z0-9']+", ql)
+    if "c" in toks:
+        hints.add("big")
+    if "f" in toks and "g" not in toks:
+        hints.add("wing")
+    if "g" in toks and "f" not in toks:
+        hints.add("guard")
+
+    return hints
+
+
+def _expand_query_synonyms(q: str) -> list[str]:
+    """Advanced synonym expansion to improve recall when semantic search under-fires."""
+    ql = (q or "").lower()
+    synonyms: list[str] = []
+
+    mapping = {
+        "shoot 3": ["three point", "3pt", "shot3", "spacing", "stretch"],
+        "can shoot": ["three point", "catch and shoot", "spot up"],
+        "rim protector": ["block", "paint", "anchor", "drop coverage"],
+        "room to grow": ["upside", "project", "frame", "fill out"],
+        "big": ["size", "physical", "strong"],
+        "tall": ["length", "long", "rangy"],
+        "clutch": ["late game", "pressure", "close game"],
+        "playmaker": ["passer", "creator", "ball handler"],
+    }
+    for k, vs in mapping.items():
+        if k in ql:
+            synonyms.extend(vs)
+    return synonyms
+
+def _restore_vector_db_if_needed() -> bool:
+    """Rebuild vector_db from split zip parts if missing."""
+    db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
+    if db_path.exists():
         return True
 
-    repo_vector_dir = REPO_ROOT / "data" / "vector_db"
-    work_vector_dir = WORK_DIR / "vector_db"
+    parts = sorted((REPO_ROOT / "data").glob("vector_db.zip.part*"))
+    if not parts:
+        return False
 
-    if repo_vector_dir.exists() and repo_vector_dir.is_dir():
-        try:
-            if work_vector_dir.exists():
-                shutil.rmtree(work_vector_dir)
-            shutil.copytree(repo_vector_dir, work_vector_dir)
-            return writable_chroma.exists()
-        except Exception:
-            pass
+    zip_path = REPO_ROOT / "data" / "vector_db.zip"
+    if not zip_path.exists():
+        with open(str(zip_path), "wb") as out:
+            for part in parts:
+                out.write(part.read_bytes())
 
-    data_dir = REPO_ROOT / "data"
-    parts = sorted(data_dir.glob("vector_db.zip.part*"))
-    zip_in_repo = data_dir / "vector_db.zip"
-
-    zip_path = WORK_DIR / "vector_db.zip"
     try:
-        if parts:
-            with open(zip_path, "wb") as out:
-                for part in parts:
-                    out.write(part.read_bytes())
-        elif zip_in_repo.exists():
-            shutil.copy2(zip_in_repo, zip_path)
-        else:
-            return False
-
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(WORK_DIR)
-
-        return writable_chroma.exists()
+        with zipfile.ZipFile(str(zip_path)) as zf:
+            zf.extractall(str(REPO_ROOT / "data"))
     except Exception:
         return False
 
+    return db_path.exists()
 
+@st.cache_data(show_spinner=False)
+def _load_players_index():
+    try:
+        # ALWAYS use string path for sqlite3
+        con = sqlite3.connect(DB_PATH_STR)
+        cur = con.cursor()
+        cur.execute("SELECT player_id, full_name, position, team_id, class_year FROM players")
+        rows = cur.fetchall()
+        con.close()
+        players = []
+        for r in rows:
+            players.append({
+                "player_id": r[0],
+                "full_name": r[1] or "",
+                "position": r[2] or "",
+                "team_id": r[3] or "",
+                "class_year": r[4] or "",
+            })
+        return players
+    except Exception:
+        return []
+
+def _norm_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+def _looks_like_name(query: str) -> bool:
+    q = (query or "").strip()
+    if len(q) < 3:
+        return False
+    if any(ch.isdigit() for ch in q):
+        return False
+    parts = q.split()
+    return 1 <= len(parts) <= 3
+
+def _resolve_name_query(query: str):
+    if not query or not _looks_like_name(query):
+        return {"mode": "none", "matches": []}
+    players = _load_players_index()
+    if not players:
+        return {"mode": "none", "matches": []}
+    norm_q = _norm_name(query)
+    exact = [p for p in players if _norm_name(p["full_name"]) == norm_q]
+    if exact:
+        return {"mode": "exact_single" if len(exact) == 1 else "exact_multi", "matches": exact}
+
+    scored = []
+    for p in players:
+        name_norm = _norm_name(p["full_name"])
+        if not name_norm:
+            continue
+        score = SequenceMatcher(None, norm_q, name_norm).ratio()
+        scored.append((score, p))
+    scored.sort(reverse=True, key=lambda x: x[0])
+    top = [p for _, p in scored[:5]]
+    if not scored:
+        return {"mode": "none", "matches": []}
+    best = scored[0][0]
+    if best >= 0.90:
+        return {"mode": "fuzzy_multi", "matches": top}
+    return {"mode": "none", "matches": []}
+
+@st.cache_data(show_spinner=False)
+def _lookup_player_id_by_name(name: str):
+    name = (name or "").strip()
+    if not name:
+        return None
+
+    cols = _players_table_columns()
+    if not cols:
+        return None
+
+    try:
+        con = sqlite3.connect(DB_PATH_STR)
+        cur = con.cursor()
+        cur.execute(f"SELECT {cols['id']} FROM players WHERE {cols['name']} = ? LIMIT 1", (name,))
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            con.close()
+            return _normalize_player_id(row[0])
+
+        cur.execute(
+            f"SELECT {cols['id']} FROM players WHERE LOWER({cols['name']}) = LOWER(?) LIMIT 1",
+            (name,),
+        )
+        row = cur.fetchone()
+        con.close()
+        return _normalize_player_id(row[0]) if row and row[0] is not None else None
+    except Exception:
+        try:
+            con.close()
+        except:
+            pass
+        return None
+
+@st.cache_resource(show_spinner=False)
 def _get_search_collection():
-    """Return the Chroma collection used for semantic search.
-
-    IMPORTANT:
-    - Always use the writable WORK_DIR copy of the vector DB (Snowflake + Streamlit Cloud safe).
-    - _restore_vector_db_if_needed() will populate WORK_DIR/vector_db from the repo copy or zip parts.
-    """
     import chromadb
-
-    if not _restore_vector_db_if_needed():
-        raise RuntimeError("Vector DB not found. Expected WORK_DIR/vector_db to be present.")
-
-    vector_db_path = WORK_DIR / "vector_db"
+    vector_db_path = REPO_ROOT / "data" / "vector_db"
+    # Ensure path is string
     client = chromadb.PersistentClient(path=str(vector_db_path))
-    return client.get_collection(name="skout_plays")
+    try:
+        return client.get_collection(name="skout_plays")
+    except Exception:
+        _restore_vector_db_if_needed()
+        client = chromadb.PersistentClient(path=str(vector_db_path))
+        return client.get_collection(name="skout_plays")
 
 @st.cache_data(show_spinner=False, max_entries=50000)
 def _tag_play_cached(description: str) -> tuple[str, ...]:
@@ -510,12 +698,9 @@ def _get_fallback_videos(profile: dict) -> list[str]:
     st.session_state[cache_key] = urls
     return urls
 
-
-
-def _render_profile_overlay(player_id: str) -> None:
-    """Render the Player Card overlay. Must never hard-crash the app on rerun."""
+def _render_profile_overlay(player_id: str):
     pid = _normalize_player_id(player_id)
-    profile = _get_player_profile(pid) if pid else None
+    profile = _get_player_profile(pid)
 
     if profile is not None:
         profile["search_tags"] = st.session_state.get("last_query_tags", []) or []
@@ -535,122 +720,351 @@ def _render_profile_overlay(player_id: str) -> None:
                 "weight_lb": meta.get("weight_lb") or meta.get("weight"),
                 "high_school": meta.get("high_school") or meta.get("hs"),
                 "traits": meta.get("traits") or {},
-                "stats": meta.get("stats") or {},
                 "search_tags": st.session_state.get("last_query_tags", []) or [],
             }
 
     if not profile:
         st.warning("Player not found.")
         return
+    title = profile.get("name", "Player Profile")
 
-    title = profile.get("name") or "Player Profile"
+    def body():
+        st.markdown(f"""
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <h2 style="margin:0; padding:0; color:white; font-size:2rem;">{title}</h2>
+            </div>
+        """, unsafe_allow_html=True)
 
-    def body() -> None:
-        try:
-            team_label = str(profile.get("team_id") or "Unknown")
-            position = profile.get("position") or "—"
-            class_year = profile.get("class_year") or "—"
-            height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else "—"
-            weight = f"{int(profile.get('weight_lb'))} lbs" if profile.get("weight_lb") else "—"
-            hs = profile.get("high_school") or "—"
+        cache = st.session_state.get("player_meta_cache", {}) or {}
+        meta_cache = cache.get(pid, {}) if pid else {}
+        score = meta_cache.get("score")
+
+        team_label = str(profile.get("team_id") or "Unknown")
+        # Heuristic for IDs vs Names
+        if len(team_label) > 16 and team_label.replace("-", "").isalnum() and " " not in team_label:
+            # Try to lookup, else default unknown
+            team_label = "Unknown"
+
+        stats = profile.get("stats", {}) or {}
+        season_label = stats.get("season_label") or stats.get("season_id") or ""
+        ppg = stats.get("ppg")
+        rpg = stats.get("rpg")
+        apg = stats.get("apg")
+
+        height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else "—"
+        weight = f"{int(profile.get('weight_lb'))} lbs" if profile.get("weight_lb") else "—"
+        hs = profile.get("high_school") or "—"
+        class_year = profile.get("class_year") or "—"
+        position = profile.get("position") or "—"
+        score_tag = f"Recruit Score {score:.1f}" if score is not None else "Recruit Score —"
+
+        st.markdown(
+            f"""
+            <div style="background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+                        border:1px solid rgba(255,255,255,0.08); padding:18px 20px; border-radius:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:1.05rem; letter-spacing:0.5px; text-transform:uppercase; opacity:0.7;">{team_label}</div>
+                  <div style="font-size:2.1rem; font-weight:700; color:white; margin-top:2px;">{title}</div>
+                  <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height} • {weight}</div>
+                  <div style="margin-top:6px; opacity:0.7; font-size:0.95rem;">HS: {hs}</div>
+                </div>
+                <div style="text-align:right; min-width:180px;">
+                  <div style="font-size:0.9rem; opacity:0.7;">{season_label} Production</div>
+                  <div style="font-size:1.4rem; font-weight:600;">{(ppg if ppg is not None else 0):.1f} PPG</div>
+                  <div style="opacity:0.8;">{(rpg if rpg is not None else 0):.1f} RPG • {(apg if apg is not None else 0):.1f} APG</div>
+                  <div style="margin-top:8px; padding:6px 10px; display:inline-block; border-radius:999px; border:1px solid rgba(255,255,255,0.15); font-size:0.85rem;">{score_tag}</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if stats:
+            st.markdown("### Stats Snapshot")
+            cols = st.columns(4)
+            def _pct(v):
+                return f"{v*100:.1f}%" if isinstance(v, (int, float)) else "—"
+            def _val(v):
+                return "—" if v is None else v
+            cols[0].metric("GP", _val(stats.get("gp")))
+            cols[1].metric("PTS", _val(stats.get("points")))
+            cols[2].metric("REB", _val(stats.get("reb")))
+            cols[3].metric("AST", _val(stats.get("ast")))
+            cols = st.columns(4)
+            cols[0].metric("STL", _val(stats.get("stl")))
+            cols[1].metric("BLK", _val(stats.get("blk")))
+            cols[2].metric("MIN", _val(stats.get("minutes")))
+            cols[3].metric("TOV", _val(stats.get("turnover")))
+            cols = st.columns(3)
+            cols[0].metric("FG%", _pct(stats.get("fg_percent")))
+            cols[1].metric("3P%", _pct(stats.get("shot3_percent")))
+            cols[2].metric("FT%", _pct(stats.get("ft_percent")))
+            cols = st.columns(3)
+            cols[0].metric("PPG", _val(stats.get("ppg")))
+            cols[1].metric("RPG", _val(stats.get("rpg")))
+            cols[2].metric("APG", _val(stats.get("apg")))
+
+        st.markdown("### Scout Breakdown")
+        with st.spinner("The Old Recruiter is watching tape..."):
+            breakdown = generate_scout_breakdown(profile)
+        
+        breakdown = re.sub(r"\[clip:(\d+)\]", r"[clip](#clip-\1)", breakdown)
+        st.markdown(
+            f"<div style='background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); padding:12px 14px; border-radius:10px; color:#e5e7eb;'>" + breakdown + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        from src.processing.play_tagger import tag_play
+        plays = profile.get("plays", [])
+        tag_counts = {}
+        for _, desc, _, _ in plays:
+            for t in _tag_play_cached(desc):
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+        if tag_counts:
+            st.markdown("### Tags Applied")
+            tags_sorted = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+            st.write(", ".join([t for t, _ in tags_sorted[:12]]))
+
+        traits = profile.get("traits", {}) or {}
+        if traits:
+            st.markdown("### Strengths / Weaknesses")
+            strengths = []
+            weaknesses = []
+            for key, label in [
+                ("dog_index", "Dog"),
+                ("menace_index", "Menace"),
+                ("unselfish_index", "Unselfish"),
+                ("toughness_index", "Toughness"),
+                ("rim_pressure_index", "Rim Pressure"),
+                ("shot_making_index", "Shot Making"),
+                ("gravity_index", "Gravity"),
+                ("size_index", "Size"),
+            ]:
+                val = traits.get(key)
+                if val is None:
+                    continue
+                if val >= 70:
+                    strengths.append(label)
+                elif val <= 35:
+                    weaknesses.append(label)
+            if strengths or weaknesses:
+                st.markdown("**ML Assessment**")
+            if strengths:
+                st.success(f"**Strengths:** {', '.join(strengths[:4])}")
+            if weaknesses:
+                st.error(f"**Weaknesses:** {', '.join(weaknesses[:3])}")
+            tags = profile.get("search_tags", []) or []
+            if tags:
+                st.markdown("**Matched Tags**")
+                st.write("• " + "\n• ".join(tags))
+
+        matchups = profile.get("matchups", {})
+        last_tags = set(st.session_state.get("last_query_tags", []) or [])
+        filtered = []
+        if plays:
+            for play_id, desc, game_id, clock in plays:
+                tags = set(_tag_play_cached(desc))
+                if last_tags and not tags.intersection(last_tags):
+                    continue
+                filtered.append((play_id, desc, game_id, clock, tags))
+
+        clips = filtered if filtered else [(p[0], p[1], p[2], p[3], set(_tag_play_cached(p[1]))) for p in plays]
+        st.markdown("### Film Room")
+        if clips:
+            vid_items = []
+            for play_id, desc, game_id, clock, tags in clips:
+                home, away, video = matchups.get(game_id, ("Unknown", "Unknown", None))
+                if video:
+                    vid_items.append({
+                        "play_id": play_id,
+                        "desc": desc,
+                        "game": f"{home} vs {away}",
+                        "clock": clock,
+                        "video": video,
+                        "tags": tags,
+                    })
+            uniq = []
+            seen = set()
+            for v in vid_items:
+                if v["video"] in seen:
+                    continue
+                seen.add(v["video"])
+                uniq.append(v)
+
+            top3 = uniq[:3]
+            if top3:
+                cols = st.columns(3)
+                for i, v in enumerate(top3):
+                    with cols[i % 3]:
+                        st.markdown(f"**{v['game']}**")
+                        st.caption(v["clock"])
+                        st.video(v["video"], start_time=0)
+                if len(uniq) > 3:
+                    if st.button("See more", key=f"see_more_{pid}"):
+                        st.session_state[f"show_more_videos_{pid}"] = True
+            else:
+                fallback = _get_fallback_videos(profile)
+                if fallback:
+                    st.caption("No Synergy clips available — showing web‑found video highlights.")
+                    cols = st.columns(3)
+                    for i, vurl in enumerate(fallback[:3]):
+                        with cols[i % 3]:
+                            st.video(vurl)
+                    if len(fallback) > 3:
+                        st.button("See more", key=f"see_more_web_{pid}")
+                else:
+                    st.caption("No video clips available.")
+
+            if st.session_state.get(f"show_more_videos_{pid}"):
+                st.markdown("#### All Relevant Clips")
+                cols = st.columns(3)
+                for i, v in enumerate(uniq):
+                    with cols[i % 3]:
+                        st.markdown(f"**{v['game']}**")
+                        st.caption(v["clock"])
+                        st.video(v["video"], start_time=0)
+                if st.button("Close", key=f"close_more_{pid}"):
+                    st.session_state[f"show_more_videos_{pid}"] = False
+        else:
+            fallback = _get_fallback_videos(profile)
+            if fallback:
+                st.caption("No Synergy clips available — showing web‑found video highlights.")
+                cols = st.columns(3)
+                for i, vurl in enumerate(fallback[:3]):
+                    with cols[i % 3]:
+                        st.video(vurl)
+                if len(fallback) > 3:
+                    st.button("See more", key=f"see_more_web_{pid}")
+            else:
+                st.caption("No clips available for this player.")
+
+        st.markdown("### Social Media Scouting Report")
+        report = _get_social_report(pid)
+        queue_status = _get_social_queue_status(pid)
+
+        progress_val = 0
+        if queue_status:
+            if queue_status.get("status") == "queued":
+                progress_val = 25
+            elif queue_status.get("status") == "running":
+                progress_val = 60
+            elif queue_status.get("status") == "done":
+                progress_val = 100
+            elif queue_status.get("status") == "error":
+                progress_val = 0
+        if progress_val:
+            st.progress(progress_val)
+
+        if report and report.get("status") == "complete":
+            rep = report.get("report") or {}
+            handle = rep.get("verified_handle") or report.get("handle") or ""
+            platform = rep.get("platform") or report.get("platform") or ""
+            confidence = rep.get("confidence", "—")
+            vibe = rep.get("vibe_check", "—")
+            green = rep.get("green_flags") or []
+            red = rep.get("red_flags") or []
+            persona = rep.get("persona_tags") or []
+            leadership = rep.get("leadership_signals") or []
+            discipline = rep.get("discipline_concerns") or []
+            nil_ops = rep.get("NIL_opportunities") or []
+            risk = rep.get("recruiting_risk") or "—"
+            summary = rep.get("summary") or ""
+            recommendation = rep.get("recommendation") or ""
 
             st.markdown(
-                f"""
-                <div class="pr-card" style="padding:18px 18px 14px 18px;">
-                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap;">
-                    <div>
-                      <div style="opacity:.75; font-size:.95rem;">{team_label}</div>
-                      <div style="font-size:1.8rem; font-weight:900; margin-top:2px;">{title}</div>
-                      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                        <span class="pr-pill">{position}</span>
-                        <span class="pr-pill">{class_year}</span>
-                        <span class="pr-pill">{height}</span>
-                        <span class="pr-pill">{weight}</span>
-                      </div>
-                      <div style="opacity:.75; margin-top:10px;">High School: {hs}</div>
-                    </div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+                f"**Verified:** {handle} {f'({platform})' if platform else ''} — **Confidence:** {confidence}%**" 
+                if handle else "**Verified:** —"
             )
+            if vibe:
+                st.success(f"Vibe Check: {vibe}")
+            st.markdown(f"**Recruiting Risk:** {risk}")
+            if persona:
+                st.markdown("**Persona Tags**")
+                st.write("• " + "\n• ".join(persona))
+            if green:
+                st.markdown("**Green Flags**")
+                st.write("• " + "\n• ".join(green))
+            if red:
+                st.markdown("**Red Flags**")
+                st.write("• " + "\n• ".join(red))
+            if leadership:
+                st.markdown("**Leadership Signals**")
+                st.write("• " + "\n• ".join(leadership))
+            if discipline:
+                st.markdown("**Discipline Concerns**")
+                st.write("• " + "\n• ".join(discipline))
+            if nil_ops:
+                st.markdown("**NIL Opportunities**")
+                st.write("• " + "\n• ".join(nil_ops))
+            if summary:
+                st.info(summary)
+            if recommendation:
+                st.markdown("**Recruiting Recommendation**")
+                st.write(recommendation)
 
-            stats = profile.get("stats", {}) or {}
-            if stats:
-                st.markdown("### Stats Snapshot")
-                cols = st.columns(4)
-                cols[0].metric("PPG", f"{stats.get('ppg', 0):.1f}" if isinstance(stats.get("ppg"), (int, float)) else "—")
-                cols[1].metric("RPG", f"{stats.get('rpg', 0):.1f}" if isinstance(stats.get("rpg"), (int, float)) else "—")
-                cols[2].metric("APG", f"{stats.get('apg', 0):.1f}" if isinstance(stats.get("apg"), (int, float)) else "—")
-                cols[3].metric("GP", str(stats.get("gp") or "—"))
+            if report.get("chosen_url"):
+                st.markdown(f"[Source Profile]({report['chosen_url']})")
 
-            # Scout breakdown (LLM)
-            if "scout" not in st.session_state:
-                st.session_state["scout"] = {}
+        elif queue_status and queue_status.get("status") in {"queued", "running"}:
+            st.caption("Scouting in progress… this may take a few minutes.")
+        elif queue_status and queue_status.get("status") == "error":
+            st.error(f"Scouting failed: {queue_status.get('last_error')}")
 
-            if generate_scout_breakdown and pid:
-                if st.button("Generate Scout Breakdown", use_container_width=True):
-                    with st.spinner("Generating scout breakdown..."):
-                        try:
-                            st.session_state["scout"][pid] = generate_scout_breakdown(pid)
-                        except Exception as e:
-                            st.error("Scout breakdown failed.")
-                            st.exception(e)
+        if st.button("Generate Social Media Scouting Report", key=f"gen_social_{pid}"):
+            _enqueue_social_report(pid)
+            st.success("Scouting queued. Refresh in a couple minutes.")
 
-                scout_txt = st.session_state["scout"].get(pid)
-                if scout_txt:
-                    st.markdown("### Scout Breakdown")
-                    st.write(scout_txt)
-
-            # Plays preview
-            plays = profile.get("plays") or []
-            if plays:
-                st.markdown("### Recent Plays")
-                for play_id, desc, game_id, clock_display in plays[:12]:
-                    st.markdown(f"- **{clock_display or ''}** {desc}")
-
-            # Video fallback
-            videos = _get_fallback_videos(profile)
-            if videos:
-                st.markdown("### Video (fallback)")
-                for url in videos[:6]:
-                    st.write(url)
-
-        except Exception as e:
-            st.error("Player Card failed to render (caught safely so app won’t crash).")
-            st.exception(e)
-
-    try:
-        if hasattr(st, "dialog"):
-            @st.dialog(title, width="large")
-            def _dlg() -> None:
-                body()
-
-            _dlg()
+        st.markdown("### Video Evidence")
+        video_links = [v for _, _, v in matchups.values() if v]
+        if video_links:
+            uniq = []
+            for v in video_links:
+                if v not in uniq:
+                    uniq.append(v)
+            for v in uniq[:8]:
+                st.markdown(f"• [Video Evidence]({v})")
         else:
-            body()
-    except Exception as e:
-        st.error("Failed to open Player Card dialog.")
-        st.exception(e)
+            st.caption("No video evidence linked yet — will populate when full-access API URLs are available.")
 
+    dialog_fn = getattr(st, "dialog", None)
+    if callable(dialog_fn):
+        @dialog_fn("Player Profile")
+        def show_dialog():
+            cols = st.columns([1, 7])
+            if cols[0].button("<", key="back_profile"):
+                _clear_qp_safe("player")
+                st.session_state["selected_player"] = None
+                st.rerun()
+            body()
+        show_dialog()
+    else:
+        st.markdown("---")
+        cols = st.columns([1, 7])
+        if cols[0].button("<", key="back_profile"):
+            _clear_qp_safe("player")
+            st.session_state["selected_player"] = None
+            st.rerun()
+        body()
 
 def check_ingestion_status():
     _restore_vector_db_if_needed()
-    db_path = WORK_DIR / "vector_db" / "chroma.sqlite3"
+    db_path = REPO_ROOT / "data" / "vector_db" / "chroma.sqlite3"
     return db_path.exists()
 
 def render_header():
-    header_logo = get_base64_image("www/PR_LOGO_NEW_RECTANGLE.jpg")
+    header_logo = get_base64_image("www/PR_LOGO_BANNER.png")
     if header_logo:
         banner_html = f"""
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"data:image/jpeg;base64,{header_logo}\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+             <img src=\"data:image/png;base64,{header_logo}\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
         </div>
         """
     else:
         banner_html = """
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"https://portalrecruit.github.io/PortalRecruit/PR_LOGO_NEW_RECTANGLE.jpg\" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+             <img src=\"https://portalrecruit.github.io/PortalRecruit/PR_LOGO_BANNER.png" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
         </div>
         """
     hero_html = f"<div class=\"pr-hero\">{banner_html}</div>"
@@ -872,7 +1286,7 @@ with st.sidebar:
                 <img src="data:image/jpeg;base64,{sb_logo}" style="width:120px; border-radius:50%; border:2px solid rgba(255,255,255,0.1);">
             </div>
         """, unsafe_allow_html=True)
-
+    
     st.markdown("<h3 style='text-align:center; font-family:var(--font-heading);'>PORTAL RECRUIT</h3>", unsafe_allow_html=True)
     st.divider()
 
@@ -888,20 +1302,30 @@ with st.sidebar:
 if st.session_state.app_mode == "Admin":
     render_header()
     st.caption("⚙️ Ingestion Pipeline & Settings")
-    # Admin content (import-based; avoids fragile filesystem exec across runtimes)
-    try:
-        from src.dashboard import admin_content  # noqa: F401
-        if hasattr(admin_content, "render_admin_panel"):
-            admin_content.render_admin_panel()  # type: ignore[attr-defined]
-    except Exception as e:
-        st.error(f"Admin panel failed to load: {e}")
-        st.exception(e)
+    admin_path = REPO_ROOT / "src" / "dashboard" / "admin_content.py"
+    if not admin_path.exists():
+        admin_path = REPO_ROOT / "admin_content.py" # Fallback
+    
+    if admin_path.exists():
+        try:
+            from src.dashboard import admin_content  # noqa: F401
+            if "render_admin" in dir(admin_content):
+                admin_content.render_admin(REPO_ROOT=REPO_ROOT, WORK_DIR=WORK_DIR, DB_PATH_STR=DB_PATH_STR)
+            else:
+                # Backward compatibility: execute module top-level if it defines Streamlit UI directly
+                import importlib
+                importlib.reload(admin_content)
+        except Exception as e:
+            st.error("Admin module failed to load.")
+            st.exception(e)
+    else:
+        st.error(f"Could not find {admin_path}")
 
 elif st.session_state.app_mode == "Search":
     render_header()
     qp = _get_qp_safe()
     target_pid = st.session_state.get("selected_player")
-
+    
     if not target_pid and "player" in qp:
         raw_pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
         target_pid = _normalize_player_id(raw_pid)
@@ -914,13 +1338,13 @@ elif st.session_state.app_mode == "Search":
             st.session_state["selected_player"] = pid
             _render_profile_overlay(pid)
             st.stop()
-
+        
         _clear_qp_safe("player")
         st.session_state["selected_player"] = None
         st.warning("Player not found.")
-
+    
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-
+    
     def _mark_search_requested():
         st.session_state["search_requested"] = True
         st.session_state["search_status"] = "Searching"
@@ -929,27 +1353,22 @@ elif st.session_state.app_mode == "Search":
     last_q = st.session_state.get("last_query") or ""
     search_status = st.session_state.get("search_status") or "Search"
 
-    form_cols = st.columns([7, 2], gap="small")
-# FIX: Define columns INSIDE the form
-    with st.form("search_form", clear_on_submit=False):
-        form_cols = st.columns([7, 2], gap="small")  # <--- Moved here
+    cols = st.columns([5, 1.2], gap="small")
+    with cols[0]:
+        query = st.text_input(
+            "Player Search",
+            last_q,
+            placeholder="e.g. 'Athletic wing who can finish at the rim'",
+            label_visibility="collapsed",
+            on_change=_mark_search_requested,
+            key="search_query_input",
+        )
+    with cols[1]:
+        if st.button(search_status, key="search_btn", use_container_width=True):
+            st.session_state["search_requested"] = True
+            st.session_state["search_status"] = "Searching"
+            st.session_state["search_started_at"] = time.time()
 
-        with form_cols[0]:
-            query = st.text_input(
-                "Player Search",
-                last_q,
-                placeholder="e.g. 'Athletic forward who excels in the clutch'",
-                label_visibility="collapsed",
-                key="search_query_input",
-            )
-        with form_cols[1]:
-            submitted = st.form_submit_button(search_status, use_container_width=True)
-
-        # Logic handling remains indented outside the column blocks but inside or after the form as needed
-        if submitted or (query and query != last_q and st.session_state.get("search_requested") is not True):
-            _mark_search_requested()
-        if submitted or (query and query != last_q and st.session_state.get("search_requested") is not True):
-            _mark_search_requested()
     try:
         mem_path = REPO_ROOT / "data" / "search_memory.json"
         if mem_path.exists():
@@ -967,6 +1386,18 @@ elif st.session_state.app_mode == "Search":
         suggestions = suggest_rich(query, limit=25)
     except:
         suggestions = []
+
+    
+    def _render_debug_filters():
+        dbg = st.session_state.get("debug_counts") or {}
+        if not dbg:
+            return
+        with st.expander("🔎 Debug: why no results / filter stages", expanded=False):
+            st.write(dbg)
+            hints = st.session_state.get("last_role_hints") or []
+            sz = st.session_state.get("last_size_intents") or {}
+            st.write({"role_hints": hints, "size_intents": sz})
+            st.caption("Tip: If 'meta_found' is low, your players table isn't matching play player_id types. If 'after_position_filters' drops to 0, it's position normalization.")
 
     def _render_results(rows, query_text):
         if rows:
@@ -1015,31 +1446,30 @@ elif st.session_state.app_mode == "Search":
                 wt = clips[0].get("Weight")
                 pos = pos if pos not in [None, "", "None"] else "—"
                 team = team if team not in [None, "", "None"] else "—"
+                
+                detail_parts = [
+                    player,
+                    pos,
+                    _fmt_height(ht) if ht else "—",
+                    f"{int(wt)} lbs" if wt else "—",
+                    team,
+                    f"Recruit Score: {score:.1f}",
+                ]
+                label = " | ".join(detail_parts)
 
-                height = _fmt_height(ht) if ht else "—"
-                weight = f"{int(wt)} lbs" if wt else "—"
+                if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
+                    st.session_state["selected_player"] = pid
+                    _set_qp_safe("player", pid)
+                    st.rerun()
 
-                with st.container(border=True):
-                    top = st.columns([6, 2, 2])
-                    with top[0]:
-                        st.markdown(f"**{player}**")
-                        st.caption(f"{pos} • {team} • {height} • {weight}")
-                    with top[1]:
-                        st.markdown(f"**{score:.1f}**")
-                        st.caption("Recruit score")
-                    with top[2]:
-                        if pid and st.button("View", key=f"view_{pid}", use_container_width=True):
-                            st.session_state["selected_player"] = pid
-                            _set_qp_safe("player", pid)
-                            st.rerun()
-
-                extra = []
                 extra = []
                 if clips[0].get("Class") and clips[0].get("Class") != "—": extra.append(f"Class: {clips[0].get('Class')}")
                 if clips[0].get("High School") and clips[0].get("High School") != "—": extra.append(f"HS: {clips[0].get('High School')}")
                 if extra: st.caption(" • ".join(extra))
+                st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("No results after filters.")
+            _render_debug_filters()
 
     if query and st.session_state.get("search_requested"):
         st.session_state["search_status"] = "Searching"
@@ -1108,14 +1538,6 @@ elif st.session_state.app_mode == "Search":
         finishing_intent = "finishing" in intents
 
         heuristic_tags = []
-        # Position intent (tightens results when user explicitly asks for a role)
-        if any(k in q_lower for k in ["forward", "sf", "small forward", "pf", "power forward", "wing"]):
-            role_hints.add("wing")
-        if any(k in q_lower for k in ["guard", "pg", "point guard", "sg", "shooting guard"]):
-            role_hints.add("guard")
-        if any(k in q_lower for k in ["center", "c ", "big man", "rim protector", "post", "paint", "big"]):
-            role_hints.add("big")
-
         if any(k in q_lower for k in ["big man", "big", "center", "rim protector", "paint"]):
             role_hints.add("big")
             heuristic_tags += ["rim_pressure", "block", "post_up", "paint_touch"]
@@ -1176,7 +1598,7 @@ elif st.session_state.app_mode == "Search":
             st.stop()
 
         from src.search.semantic import build_expanded_query, semantic_search, expand_query_terms
-        expanded_terms = expand_query_terms(query)
+        expanded_terms = (expand_query_terms(query) or []) + (_expand_query_synonyms(query) or [])
         expanded_query = build_expanded_query(query, (matched_phrases or []) + (expanded_terms or []))
 
         status = st.status("Searching…", expanded=False)
@@ -1258,6 +1680,19 @@ elif st.session_state.app_mode == "Search":
             )
             play_rows = cur.fetchall()
 
+            debug_counts = {
+                'play_ids_initial': count_initial,
+                'play_ids_after_fallback': count_after_fallback,
+                'play_rows_fetched': len(play_rows),
+                'meta_found': 0,
+                'after_trait_sliders': 0,
+                'after_tag_filters': 0,
+                'after_numeric_filters': 0,
+                'after_position_filters': 0,
+                'after_size_filters': 0,
+                'final_rows': 0,
+            }
+
             player_ids = [r[4] for r in play_rows if r[4]]
             traits = {}
             if player_ids:
@@ -1273,12 +1708,8 @@ elif st.session_state.app_mode == "Search":
                     """,
                     list(set(player_ids)),
                 )
-                traits = {}
-                for r in cur.fetchall():
-                    pid_norm = _normalize_player_id(r[0])
-                    if not pid_norm:
-                        continue
-                    traits[pid_norm] = {
+                traits = {
+                    _normalize_player_id(r[0]): {
                         "dog": r[1],
                         "menace": r[2],
                         "unselfish": r[3],
@@ -1293,6 +1724,8 @@ elif st.session_state.app_mode == "Search":
                         "clutch": r[12],
                         "undervalued": r[13],
                     }
+                    for r in cur.fetchall() if _normalize_player_id(r[0])
+                }
 
             cur.execute("""
                 SELECT AVG(dog_index), AVG(menace_index), AVG(unselfish_index),
@@ -1341,11 +1774,7 @@ elif st.session_state.app_mode == "Search":
                 conn_pos = sqlite3.connect(DB_PATH_STR)
                 cur_pos = conn_pos.cursor()
                 cur_pos.execute("SELECT player_id, position FROM players")
-                player_positions = {}
-                for r in cur_pos.fetchall():
-                    pid_norm = _normalize_player_id(r[0])
-                    if pid_norm:
-                        player_positions[pid_norm] = (r[1] or "")
+                player_positions = {_normalize_player_id(r[0]): (r[1] or "") for r in cur_pos.fetchall() if _normalize_player_id(r[0])}
                 conn_pos.close()
             except: pass
 
@@ -1394,12 +1823,11 @@ elif st.session_state.app_mode == "Search":
                 cur2 = conn2.cursor()
                 cur2.execute("SELECT player_id, season_id, team_id, gp, possessions, points, fg_percent, shot2_percent, shot3_percent, ft_percent, fg_attempt, shot2_attempt, shot3_attempt, turnover, ppg, rpg, apg FROM player_season_stats ORDER BY season_id DESC")
                 for r in cur2.fetchall():
-                    pid_norm = _normalize_player_id(r[0])
-                    if not pid_norm:
+                    pid = _normalize_player_id(r[0])
+                    if not pid:
                         continue
-                    if pid_norm in player_stats:
-                        continue
-                    player_stats[pid_norm] = {
+                    if pid in player_stats: continue
+                    player_stats[pid] = {
                         "season_id": r[1],
                         "team_id": r[2],
                         "gp": r[3],
@@ -1430,25 +1858,15 @@ elif st.session_state.app_mode == "Search":
                             team = home if is_home else away
                             if team: counts[(pid, team)] = counts.get((pid, team), 0) + 1
                     for (pid, team), cnt in sorted(counts.items(), key=lambda x: -x[1]):
-                        pid_norm = _normalize_player_id(pid)
-                        if not pid_norm:
-                            continue
-                        if pid_norm not in player_team_guess:
-                            player_team_guess[pid_norm] = team
+                        if pid not in player_team_guess: player_team_guess[pid] = team
                 except: pass
 
                 cur2.execute("SELECT player_id, full_name FROM players")
-                for r in cur2.fetchall():
-                    pid_norm = _normalize_player_id(r[0])
-                    if pid_norm:
-                        player_names[pid_norm] = r[1]
+                for r in cur2.fetchall(): player_names[r[0]] = r[1]
                 
                 cur2.execute("SELECT player_id, dog_index, menace_index, unselfish_index, toughness_index, rim_pressure_index, shot_making_index, gravity_index, size_index, leadership_index, resilience_index, defensive_big_index, clutch_index, undervalued_index FROM player_traits")
                 for r in cur2.fetchall():
-                    pid_norm = _normalize_player_id(r[0])
-                    if not pid_norm:
-                        continue
-                    traits_all[pid_norm] = {
+                    traits_all[r[0]] = {
                         "dog": r[1],
                         "menace": r[2],
                         "unselfish": r[3],
@@ -1481,9 +1899,11 @@ elif st.session_state.app_mode == "Search":
                 meta = player_meta.get(pid_norm) if pid_norm else None
                 if meta is None and player_name:
                     meta = player_meta_by_name.get(_norm_person_name(player_name))
-                if meta is None: continue
+                if meta is None:
+                    continue
+                debug_counts['meta_found'] += 1
                 
-                t = traits.get(_normalize_player_id(player_id), {})
+                t = traits.get(pid_norm, {}) if pid_norm else {}
                 dog_index = t.get("dog")
                 menace_index = t.get("menace")
                 unselfish_index = t.get("unselfish")
@@ -1501,6 +1921,8 @@ elif st.session_state.app_mode == "Search":
                 if gravity_index is not None and gravity_index < slider_gravity: continue
                 if t.get("size") is not None and t.get("size") < slider_size: continue
 
+                debug_counts['after_trait_sliders'] += 1
+
                 play_tags = list(_tag_play_cached(desc))
                 if "non_possession" in play_tags: continue
                 if apply_exclude and exclude_tags and set(play_tags).intersection(exclude_tags): continue
@@ -1509,8 +1931,10 @@ elif st.session_state.app_mode == "Search":
                     req_hits = len(set(required_tags).intersection(set(play_tags)))
                     if req_hits < req_threshold: continue
 
+                debug_counts['after_tag_filters'] += 1
+
                 if numeric_filters:
-                    pstats = player_stats.get(_normalize_player_id(player_id), {})
+                    pstats = player_stats.get(pid_norm, {}) if pid_norm else {}
                     allow = True
                     for comp, val, stat in numeric_filters:
                         stat_val = None
@@ -1522,14 +1946,50 @@ elif st.session_state.app_mode == "Search":
                         if comp in {"under", "below", "less than", "at most", "atmost"} and not (stat_val <= val): allow = False
                     if not allow: continue
 
-                pos = (player_positions.get(_normalize_player_id(player_id)) or "").upper()
-                if not pos and role_hints:
-                    # Avoid "unknown position" noise when the query clearly asks for a role.
-                    continue
+                debug_counts['after_numeric_filters'] += 1
+
+                pos = (player_positions.get(pid_norm) or "").upper() if pid_norm else ""
                 if pos:
-                    if "guard" in role_hints and not ("G" in pos or "PG" in pos or "SG" in pos): continue
-                    if "wing" in role_hints and not ("F" in pos or "W" in pos or "G/F" in pos or "F/G" in pos or "SF" in pos or "PF" in pos): continue
-                    if "big" in role_hints and not ("C" in pos or "F/C" in pos or "PF" in pos): continue
+                    pos_tags = _position_tags(pos)
+                    if "guard" in role_hints and "guard" not in pos_tags:
+                        continue
+                    if "wing" in role_hints and "wing" not in pos_tags:
+                        continue
+                    if "big" in role_hints and "big" not in pos_tags:
+                        continue
+
+                debug_counts['after_position_filters'] += 1
+
+                # Size / development intents (soft but effective)
+                if meta:
+                    h_in = meta.get("height_in")
+                    w_lb = meta.get("weight_lb")
+                    h_in = int(h_in) if isinstance(h_in, (int, float)) and h_in else None
+                    w_lb = float(w_lb) if isinstance(w_lb, (int, float)) and w_lb else None
+
+                    hmin = size_intents.get("height_min")
+                    hmax = size_intents.get("height_max")
+                    if hmin is not None and h_in is not None and h_in < hmin:
+                        continue
+                    if hmax is not None and h_in is not None and h_in > hmax:
+                        continue
+
+                    # position-relative sanity: if query says "big" but player is clearly small, drop
+                    if "big" in role_hints and h_in is not None and h_in < 77:
+                        continue
+                    if "guard" in role_hints and "tall" in (query or "").lower() and h_in is not None and h_in < 74:
+                        continue
+
+                    # "room to grow" prefers younger + leaner frames (approx heuristic)
+                    if size_intents.get("growth"):
+                        class_year = (meta.get("class_year") or "").lower()
+                        young = any(k in class_year for k in ["fr", "fresh", "so", "soph"])
+                        if not young:
+                            # don't exclude, but slight penalty
+                            pass
+
+
+                debug_counts['after_size_filters'] += 1
 
                 weights = {"dog": 0.5, "menace": 0.5, "unselfish": 0.5, "tough": 0.5, "rim": 0.5, "shot": 0.5, "gravity": 0.5, "size": 0.3}
                 if intent_dog > 0: weights["dog"] = 2.0
@@ -1636,10 +2096,15 @@ elif st.session_state.app_mode == "Search":
                     if len(team_clean) > 16 and team_clean.replace("-", "").isalnum() and " " not in team_clean:
                         team_val = team_name_by_id.get(team_val, "—")
                 if team_val == "—" and player_team_guess:
-                    team_val = player_team_guess.get(_normalize_player_id(player_id), "—")
+                    team_val = player_team_guess.get(player_id, "—")
                 if team_val == "—": team_val = "Unknown"
 
+                debug_counts['final_rows'] = debug_counts.get('final_rows',0)
+                debug_counts['final_rows'] += 1
+
                 rows.append({
+                    # debug
+                
                     "Match": f"{home} vs {away}",
                     "Clock": clock,
                     "Player": (player_name or "Unknown"),
@@ -1672,6 +2137,10 @@ elif st.session_state.app_mode == "Search":
                     "Video": video or "-",
                     "Score": round(score, 2),
                 })
+
+            st.session_state['debug_counts'] = debug_counts
+            st.session_state['last_role_hints'] = sorted(list(role_hints)) if 'role_hints' in locals() else []
+            st.session_state['last_size_intents'] = size_intents if 'size_intents' in locals() else {}
 
             _stage("Incoming email from <a href='mailto:theoldrecruiter@portalrecruit.com'>theoldrecruiter@portalrecruit.com</a>...", "#ff7eb6")
             rows.sort(key=lambda r: r.get("Score", 0), reverse=True)
