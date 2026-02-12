@@ -2680,7 +2680,7 @@ elif st.session_state.app_mode == "Search":
     with war_room_tab:
         st.markdown("### 🏢 War Room")
         from src.roster import get_roster, clear_roster
-        from src.exporter import generate_synergy_csv, generate_text_report
+        from src.exporter import generate_synergy_csv, generate_text_report, generate_team_packet
         roster = get_roster()
         if st.button("🧹 Clear Shortlist"):
             clear_roster()
@@ -2695,9 +2695,26 @@ elif st.session_state.app_mode == "Search":
             st.markdown(f"**Average Height:** {avg_height:.1f} in | **Average Weight:** {avg_weight:.1f} lb")
             st.markdown("**Positional Breakdown:** " + ", ".join([f"{k}: {v}" for k, v in pos_counts.items()]))
             st.dataframe(roster, use_container_width=True)
+            import pandas as pd
+            df = pd.DataFrame(roster)
+            if not df.empty:
+                if "canonical_position" in df.columns:
+                    color_col = "canonical_position"
+                elif "position" in df.columns:
+                    color_col = "position"
+                else:
+                    color_col = None
+                if "weight_lb" in df.columns and "height_in" in df.columns:
+                    st.markdown("#### Roster Size Map")
+                    chart = df[["weight_lb", "height_in", "name"] + ([color_col] if color_col else [])].rename(columns={"weight_lb": "Weight", "height_in": "Height", "name": "Player"})
+                    if color_col:
+                        chart = chart.rename(columns={color_col: "Position"})
+                    st.scatter_chart(chart, x="Weight", y="Height", color="Position" if color_col else None)
             csv_data = generate_synergy_csv(roster)
             report = generate_text_report(roster)
+            packet = generate_team_packet(roster)
             st.download_button("⬇️ Export for Synergy (CSV)", csv_data, file_name="roster_export.csv")
             st.download_button("📄 Download Report (TXT)", report, file_name="roster_report.txt")
+            st.download_button("📄 Download Team Packet (MD)", packet, file_name="team_packet.md")
         else:
             st.info("Shortlist is empty.")

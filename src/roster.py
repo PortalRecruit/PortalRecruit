@@ -4,7 +4,8 @@ import json
 import os
 from typing import Any, Dict, List
 
-ROSTER_PATH = os.path.join(os.getcwd(), "data", "shortlist.json")
+ROSTER_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shortlist.json")
+ROSTER_PATH = os.path.abspath(ROSTER_PATH)
 
 
 def _load_roster() -> List[Dict[str, Any]]:
@@ -36,6 +37,31 @@ def add_player(player: Dict[str, Any]) -> bool:
     key = _dedupe_key(player)
     if key and any(_dedupe_key(p) == key for p in roster):
         return False
+
+    # enrich with biometrics + canonical position if missing
+    if not player.get("biometric_tags") or not player.get("canonical_position"):
+        from src.biometrics import generate_biometric_tags
+        from src.position_calibration import score_positions, topk
+
+        height = player.get("height_in")
+        weight = player.get("weight_lb")
+        position = player.get("position") or ""
+
+        bio = generate_biometric_tags({
+            "height_in": height,
+            "weight_lb": weight,
+            "position": position,
+            "image_url": player.get("image_url"),
+        })
+        if not player.get("biometric_tags"):
+            player["biometric_tags"] = bio.get("tags") or []
+
+        if not player.get("canonical_position"):
+            scores = score_positions(player.get("name") or "", height_in=height, weight_lb=weight)
+            top = topk(scores, k=1)
+            if top:
+                player["canonical_position"] = top[0][0]
+
     roster.append(player)
     _save_roster(roster)
     return True
