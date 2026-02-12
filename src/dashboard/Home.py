@@ -242,16 +242,20 @@ def _restore_vector_db_if_needed() -> bool:
 
 
 def _get_search_collection():
+    """Return the Chroma collection used for semantic search.
+
+    IMPORTANT:
+    - Always use the writable WORK_DIR copy of the vector DB (Snowflake + Streamlit Cloud safe).
+    - _restore_vector_db_if_needed() will populate WORK_DIR/vector_db from the repo copy or zip parts.
+    """
     import chromadb
-    vector_db_path = REPO_ROOT / "data" / "vector_db"
-    # Ensure path is string
+
+    if not _restore_vector_db_if_needed():
+        raise RuntimeError("Vector DB not found. Expected WORK_DIR/vector_db to be present.")
+
+    vector_db_path = WORK_DIR / "vector_db"
     client = chromadb.PersistentClient(path=str(vector_db_path))
-    try:
-        return client.get_collection(name="skout_plays")
-    except Exception:
-        _restore_vector_db_if_needed()
-        client = chromadb.PersistentClient(path=str(vector_db_path))
-        return client.get_collection(name="skout_plays")
+    return client.get_collection(name="skout_plays")
 
 @st.cache_data(show_spinner=False, max_entries=50000)
 def _tag_play_cached(description: str) -> tuple[str, ...]:
@@ -1269,8 +1273,12 @@ elif st.session_state.app_mode == "Search":
                     """,
                     list(set(player_ids)),
                 )
-                traits = {
-                    r[0]: {
+                traits = {}
+                for r in cur.fetchall():
+                    pid_norm = _normalize_player_id(r[0])
+                    if not pid_norm:
+                        continue
+                    traits[pid_norm] = {
                         "dog": r[1],
                         "menace": r[2],
                         "unselfish": r[3],
@@ -1285,8 +1293,6 @@ elif st.session_state.app_mode == "Search":
                         "clutch": r[12],
                         "undervalued": r[13],
                     }
-                    for r in cur.fetchall()
-                }
 
             cur.execute("""
                 SELECT AVG(dog_index), AVG(menace_index), AVG(unselfish_index),
@@ -1335,7 +1341,11 @@ elif st.session_state.app_mode == "Search":
                 conn_pos = sqlite3.connect(DB_PATH_STR)
                 cur_pos = conn_pos.cursor()
                 cur_pos.execute("SELECT player_id, position FROM players")
-                player_positions = {r[0]: (r[1] or "") for r in cur_pos.fetchall()}
+                player_positions = {}
+                for r in cur_pos.fetchall():
+                    pid_norm = _normalize_player_id(r[0])
+                    if pid_norm:
+                        player_positions[pid_norm] = (r[1] or "")
                 conn_pos.close()
             except: pass
 
@@ -1384,9 +1394,12 @@ elif st.session_state.app_mode == "Search":
                 cur2 = conn2.cursor()
                 cur2.execute("SELECT player_id, season_id, team_id, gp, possessions, points, fg_percent, shot2_percent, shot3_percent, ft_percent, fg_attempt, shot2_attempt, shot3_attempt, turnover, ppg, rpg, apg FROM player_season_stats ORDER BY season_id DESC")
                 for r in cur2.fetchall():
-                    pid = r[0]
-                    if pid in player_stats: continue
-                    player_stats[pid] = {
+                    pid_norm = _normalize_player_id(r[0])
+                    if not pid_norm:
+                        continue
+                    if pid_norm in player_stats:
+                        continue
+                    player_stats[pid_norm] = {
                         "season_id": r[1],
                         "team_id": r[2],
                         "gp": r[3],
@@ -1417,15 +1430,25 @@ elif st.session_state.app_mode == "Search":
                             team = home if is_home else away
                             if team: counts[(pid, team)] = counts.get((pid, team), 0) + 1
                     for (pid, team), cnt in sorted(counts.items(), key=lambda x: -x[1]):
-                        if pid not in player_team_guess: player_team_guess[pid] = team
+                        pid_norm = _normalize_player_id(pid)
+                        if not pid_norm:
+                            continue
+                        if pid_norm not in player_team_guess:
+                            player_team_guess[pid_norm] = team
                 except: pass
 
                 cur2.execute("SELECT player_id, full_name FROM players")
-                for r in cur2.fetchall(): player_names[r[0]] = r[1]
+                for r in cur2.fetchall():
+                    pid_norm = _normalize_player_id(r[0])
+                    if pid_norm:
+                        player_names[pid_norm] = r[1]
                 
                 cur2.execute("SELECT player_id, dog_index, menace_index, unselfish_index, toughness_index, rim_pressure_index, shot_making_index, gravity_index, size_index, leadership_index, resilience_index, defensive_big_index, clutch_index, undervalued_index FROM player_traits")
                 for r in cur2.fetchall():
-                    traits_all[r[0]] = {
+                    pid_norm = _normalize_player_id(r[0])
+                    if not pid_norm:
+                        continue
+                    traits_all[pid_norm] = {
                         "dog": r[1],
                         "menace": r[2],
                         "unselfish": r[3],
@@ -1460,7 +1483,7 @@ elif st.session_state.app_mode == "Search":
                     meta = player_meta_by_name.get(_norm_person_name(player_name))
                 if meta is None: continue
                 
-                t = traits.get(player_id, {})
+                t = traits.get(_normalize_player_id(player_id), {})
                 dog_index = t.get("dog")
                 menace_index = t.get("menace")
                 unselfish_index = t.get("unselfish")
@@ -1487,7 +1510,7 @@ elif st.session_state.app_mode == "Search":
                     if req_hits < req_threshold: continue
 
                 if numeric_filters:
-                    pstats = player_stats.get(player_id, {})
+                    pstats = player_stats.get(_normalize_player_id(player_id), {})
                     allow = True
                     for comp, val, stat in numeric_filters:
                         stat_val = None
@@ -1499,7 +1522,7 @@ elif st.session_state.app_mode == "Search":
                         if comp in {"under", "below", "less than", "at most", "atmost"} and not (stat_val <= val): allow = False
                     if not allow: continue
 
-                pos = (player_positions.get(player_id) or "").upper()
+                pos = (player_positions.get(_normalize_player_id(player_id)) or "").upper()
                 if not pos and role_hints:
                     # Avoid "unknown position" noise when the query clearly asks for a role.
                     continue
@@ -1613,7 +1636,7 @@ elif st.session_state.app_mode == "Search":
                     if len(team_clean) > 16 and team_clean.replace("-", "").isalnum() and " " not in team_clean:
                         team_val = team_name_by_id.get(team_val, "—")
                 if team_val == "—" and player_team_guess:
-                    team_val = player_team_guess.get(player_id, "—")
+                    team_val = player_team_guess.get(_normalize_player_id(player_id), "—")
                 if team_val == "—": team_val = "Unknown"
 
                 rows.append({
