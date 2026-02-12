@@ -5,6 +5,7 @@
 - Evidence-based scout breakdowns now cite specific film actions when available.
 - CLI tooling: interactive mode, debug metadata, mock video links, and scout breakdown output.
 - Web UI: mock video links surface when real URLs are unavailable.
+- AI Position Engine: learned calibration weights now drive position scoring (alpha=1.211, beta=3.074).
 
 ## Key Changes
 - Normalized scoring to 0–1 for UI consistency.
@@ -12,6 +13,7 @@
 - Enriched LLM prompts with film notes and position/year context.
 - Added player ID mapping to recover joins between plays and players.
 - Backfilled tags for plays to improve semantic filtering.
+- Added full-dataset calibration pipeline and model bundle loading across semantic + UI.
 
 ## Next
 - Replace mock video links with Synergy/SportRadar URLs.

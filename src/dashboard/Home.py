@@ -111,6 +111,20 @@ except Exception:
     pass
 
 
+@st.cache_resource(show_spinner=False)
+def _load_position_weights() -> tuple[float, float]:
+    try:
+        from src.position_calibration import load_model_bundle
+
+        weights = load_model_bundle("position_model.json")
+        alpha = float(weights.get("alpha_semantic", 1.0))
+        beta = float(weights.get("beta_size", 1.0))
+        print(f"Loaded Position Model (alpha={alpha:.3f}, beta={beta:.3f})")
+        return alpha, beta
+    except Exception:
+        return 1.0, 1.0
+
+
 
 # --- 4b. GLASS BACKGROUND VIDEO (Cloud + Snowflake) ---
 @st.cache_data(show_spinner=False)
@@ -976,12 +990,37 @@ def _render_profile_overlay(player_id: str):
             pass
 
         tag_line = " | ".join([t.title() for t in (biometric.get("tags") or [])])
+
+        ai_position_label = "—"
+        try:
+            from src.position_calibration import score_positions, topk
+
+            alpha, beta = _load_position_weights()
+            h_val = profile.get("height_in")
+            w_val = profile.get("weight_lb")
+            scores = score_positions(
+                title,
+                height_in=float(h_val) if h_val not in (None, "") else None,
+                weight_lb=float(w_val) if w_val not in (None, "") else None,
+                alpha_semantic=alpha,
+                beta_size=beta,
+            )
+            top = topk(scores, k=1)
+            if top:
+                canon, score = top[0]
+                max_score = max(scores.values()) or 1.0
+                conf = max(0.0, min(1.0, float(score) / float(max_score)))
+                ai_position_label = f"{canon} ({conf * 100:.0f}%)"
+        except Exception:
+            pass
+
         st.markdown(f"""
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                 <img src="{player_image_url}" style="width:72px; height:72px; border-radius:12px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);" />
                 <div>
                   <h2 style="margin:0; padding:0; color:white; font-size:2rem;">{title}</h2>
                   <div style="color:#e5e7eb; font-size:0.9rem; opacity:0.9;">AI Physical Profile: {tag_line or '—'}</div>
+                  <div style="color:#93c5fd; font-size:0.85rem; opacity:0.9;">Position Analysis: {ai_position_label}</div>
                 </div>
             </div>
         """, unsafe_allow_html=True)

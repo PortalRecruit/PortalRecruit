@@ -1,6 +1,7 @@
+import argparse
 import csv
 
-from src.position_calibration import calibrate_all, export_model_bundle
+from src.position_calibration import calibrate_all, export_model_bundle, learn_global_weights_logreg
 
 POSITION_MAP = {
     "G": "GUARD",
@@ -8,6 +9,10 @@ POSITION_MAP = {
     "C": "CENTER",
     "F/C": "CENTER",
     "G/F": "SMALL_FORWARD",
+    "PG": "POINT_GUARD",
+    "SG": "SHOOTING_GUARD",
+    "SF": "SMALL_FORWARD",
+    "PF": "POWER_FORWARD",
 }
 
 
@@ -30,13 +35,20 @@ def load_samples(path: str):
 
 
 def main():
-    samples = load_samples("data/calibration_samples.csv")
-    cal = calibrate_all(samples, min_group_hits=0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", default="data/calibration_samples.csv")
+    parser.add_argument("--min-group-hits", type=int, default=40)
+    args = parser.parse_args()
+
+    samples = load_samples(args.data)
+    cal = calibrate_all(samples, min_group_hits=args.min_group_hits)
+    pos_candidates = sorted({s["true_position"] for s in samples if s.get("true_position")})
+    weights = learn_global_weights_logreg(samples, candidate_positions=pos_candidates)
     export_model_bundle(
         "position_model.json",
         cal["priors"],
         cal["group_size_updates"],
-        cal["weights"],
+        weights,
     )
 
 
