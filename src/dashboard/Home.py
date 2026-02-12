@@ -1263,7 +1263,7 @@ def check_ingestion_status():
     return db_path.exists()
 
 def render_header():
-    header_logo = get_base64_image("www/PR_LOGO_BANNER.png")
+    header_logo = get_base64_image("www/PRLOGO.png")
     if header_logo:
         banner_html = f"""
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
@@ -1273,7 +1273,7 @@ def render_header():
     else:
         banner_html = """
         <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"https://portalrecruit.github.io/PortalRecruit/PR_LOGO_BANNER.png" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+             <img src=\"https://portalrecruit.github.io/PortalRecruit/PRLOGO.png" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
         </div>
         """
     hero_html = f"<div class=\"pr-hero\">{banner_html}</div>"
