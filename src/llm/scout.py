@@ -176,6 +176,8 @@ def generate_scout_breakdown(profile: Dict[str, Any]) -> str:
         "You use scout jargon correctly (motor, length, spacing, gravity, downhill, heavy feet, twitchy). "
         "You are NOT a generic AI assistant. Do not use phrases like 'The player showcases' or 'In conclusion.' "
         "Be direct. Highlight the specific elite skill if it exists, otherwise call out the flaws. "
+        "If you cannot cite a specific action from the film notes, say you need more tape. "
+        "Do not mention Dog Index or other generic ratings unless tied to stats given. "
         "Keep the output under 120 words. Focus on: DOES HE TRANSLATE?"
     )
 

@@ -1,19 +1,27 @@
 #!/home/jch903/.venv_310/bin/python
+#!/home/jch903/.venv_310/bin/python
 import argparse
 import os
 import random
 import sqlite3
+from typing import Any, Dict, List, Optional
 
 import chromadb
 
 from src.search.semantic import semantic_search, _lexical_overlap_score, _tokenize
 from src.llm.scout import generate_scout_breakdown
 
+# ANSI colors
+ANSI_GREEN = "\033[32m"
+ANSI_RED = "\033[31m"
+ANSI_BLUE_BOLD = "\033[1;34m"
+ANSI_RESET = "\033[0m"
+
 VECTOR_DB_PATH = os.path.join(os.getcwd(), "data/vector_db")
 DB_PATH = os.path.join(os.getcwd(), "data/skout.db")
 
 
-def _load_env():
+def _load_env() -> None:
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -35,7 +43,7 @@ def _load_env():
         pass
 
 
-def _get_player_profile(conn, player_id: str | None, player_name: str | None):
+def _get_player_profile(conn, player_id: Optional[str], player_name: Optional[str]) -> Dict[str, Any]:
     cur = conn.cursor()
     mapped_pid = None
     if player_id:
@@ -165,13 +173,24 @@ def _best_snippet(desc: str, query: str, max_len: int = 160) -> str:
     return snippet
 
 
-def run_search(query: str, n_results: int = 5) -> None:
+def _colorize_outcome(text: str, tags: str) -> str:
+    lower = (text or "").lower()
+    t = (tags or "").lower()
+    if "miss" in lower or "miss" in t or "turnover" in lower or "turnover" in t:
+        return f"{ANSI_RED}{text}{ANSI_RESET}"
+    if "make" in lower or "made" in t or "score" in t:
+        return f"{ANSI_GREEN}{text}{ANSI_RESET}"
+    return text
+
+
+def run_search(query: str, n_results: int = 5, debug: bool = False) -> None:
     _load_env()
+    # TODO: Replace local Chroma call with Synergy/SportRadar search endpoint
     client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
     collection = client.get_collection(name="skout_plays")
     play_ids = semantic_search(collection, query=query, n_results=n_results)
 
-    meta_lookup = {}
+    meta_lookup: Dict[str, Dict[str, Any]] = {}
     try:
         meta = collection.get(ids=play_ids, include=["metadatas"]) if play_ids else None
         if meta and meta.get("ids"):
@@ -191,7 +210,7 @@ def run_search(query: str, n_results: int = 5) -> None:
         return
 
     query_tokens = _tokenize(query)
-    results = []
+    results: List[Dict[str, Any]] = []
 
     for i, play_id in enumerate(play_ids):
         cursor.execute(
@@ -220,7 +239,10 @@ def run_search(query: str, n_results: int = 5) -> None:
             matchup = "Unknown"
 
         meta = meta_lookup.get(str(play_id), {})
-        video_link = meta.get("video_url") or meta.get("url") or meta.get("s3_link") or ""
+        # TODO: replace mock link with real Synergy/SportRadar video URL
+        video_link = meta.get("video_url") or meta.get("url") or meta.get("s3_link")
+        if not video_link:
+            video_link = f"https://mock.synergy.com/video/{play_id}.mp4"
 
         score = _lexical_overlap_score(query_tokens, desc, {"tags": tags})
         snippet = _best_snippet(desc, query)
@@ -236,6 +258,7 @@ def run_search(query: str, n_results: int = 5) -> None:
             "file": v_path,
             "snippet": snippet,
             "video": video_link,
+            "meta": meta,
         })
 
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -248,11 +271,18 @@ def run_search(query: str, n_results: int = 5) -> None:
 
     for i, r in enumerate(results):
         video_out = r['video'] if r.get('video') else r['file']
-        print(f"[{i+1}] Score: {r['score']:.2f} | Player: {r['player_name']}")
+        name_out = f"{ANSI_BLUE_BOLD}{r['player_name']}{ANSI_RESET}"
+        snippet_out = _colorize_outcome(r['snippet'], r.get('tags', ""))
+        print(f"[{i+1}] Score: {r['score']:.2f} | Player: {name_out}")
         print(f" Matchup: {r['matchup']} @ {r['clock']}")
-        print(f" Snippet: {r['snippet']}")
+        print(f" Snippet: {snippet_out}")
         print(f" Tags: [{r['tags']}]\n Video: {video_out}")
         print("")
+
+    if debug and results:
+        print("\n🧪 Debug Metadata (Top Result)")
+        print("-" * 50)
+        print(results[0].get("meta"))
 
     top3 = results[:3] if len(results) >= 3 else results
     if not top3:
@@ -267,7 +297,7 @@ def run_search(query: str, n_results: int = 5) -> None:
     print(breakdown)
 
 
-def run_interactive():
+def run_interactive() -> None:
     while True:
         q = input("Enter search query (or 'q' to quit): ").strip()
         if q.lower() in {"q", "quit", "exit"}:
@@ -284,12 +314,13 @@ if __name__ == "__main__":
     s = sub.add_parser("search")
     s.add_argument("query")
     s.add_argument("--n", type=int, default=5)
+    s.add_argument("--debug", action="store_true")
 
     sub.add_parser("interactive")
 
     args = parser.parse_args()
     if args.command == "search":
-        run_search(args.query, n_results=args.n)
+        run_search(args.query, n_results=args.n, debug=args.debug)
     elif args.command == "interactive":
         run_interactive()
     else:
