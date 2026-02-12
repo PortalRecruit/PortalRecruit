@@ -451,12 +451,18 @@ if __name__ == "__main__":
             print(f"Weight A: {int(a_profile.get('weight_lb'))} lb ({w_pct_a}th %ile)")
         if b_profile.get("weight_lb"):
             print(f"Weight B: {int(b_profile.get('weight_lb'))} lb ({w_pct_b}th %ile)")
+        from src.narrative import generate_physical_profile
+        stats_a = a_profile.get("stats") or {"ppg": a_profile.get("ppg"), "rpg": a_profile.get("rpg"), "apg": a_profile.get("apg")}
+        stats_b = b_profile.get("stats") or {"ppg": b_profile.get("ppg"), "rpg": b_profile.get("rpg"), "apg": b_profile.get("apg")}
         print(comp.get("height_diff"))
         print(comp.get("weight_diff"))
         print(comp.get("ppg_diff"))
         print(comp.get("rpg_diff"))
         print(comp.get("apg_diff"))
         print(comp.get("fit_diff"))
+        print("-")
+        print("Auto-Scout A:", generate_physical_profile(a_profile.get("name"), pos_a, h_pct_a, w_pct_a, a_profile.get("bio_tags") or [], stats_a))
+        print("Auto-Scout B:", generate_physical_profile(b_profile.get("name"), pos_b, h_pct_b, w_pct_b, b_profile.get("bio_tags") or [], stats_b))
     elif args.command == "shortlist":
         from src.roster import add_player, get_roster, clear_roster
         from src.exporter import generate_synergy_csv

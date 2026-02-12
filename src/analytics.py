@@ -48,12 +48,14 @@ def compare_players(player_a: Dict[str, Any], player_b: Dict[str, Any], query: s
     a_weight = _safe_float(player_a.get("weight_lb"))
     b_weight = _safe_float(player_b.get("weight_lb"))
 
-    a_ppg = _safe_float(player_a.get("ppg"))
-    b_ppg = _safe_float(player_b.get("ppg"))
-    a_rpg = _safe_float(player_a.get("rpg"))
-    b_rpg = _safe_float(player_b.get("rpg"))
-    a_apg = _safe_float(player_a.get("apg"))
-    b_apg = _safe_float(player_b.get("apg"))
+    stats_a = player_a.get("stats") or {}
+    stats_b = player_b.get("stats") or {}
+    a_ppg = _safe_float(player_a.get("ppg") or stats_a.get("ppg"))
+    b_ppg = _safe_float(player_b.get("ppg") or stats_b.get("ppg"))
+    a_rpg = _safe_float(player_a.get("rpg") or stats_a.get("rpg"))
+    b_rpg = _safe_float(player_b.get("rpg") or stats_b.get("rpg"))
+    a_apg = _safe_float(player_a.get("apg") or stats_a.get("apg"))
+    b_apg = _safe_float(player_b.get("apg") or stats_b.get("apg"))
 
     fit_a = score_positions(query, a_height, a_weight)
     fit_b = score_positions(query, b_height, b_weight)

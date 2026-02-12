@@ -18,6 +18,12 @@ def main():
 
     player_meta = {str(r[0]): (r[1], r[2], r[3]) for r in rows if r[0]}
 
+    stats = {}
+    cur.execute("SELECT player_id, MAX(ppg), MAX(rpg), MAX(apg) FROM player_season_stats GROUP BY player_id")
+    for pid, ppg, rpg, apg in cur.fetchall():
+        if pid:
+            stats[str(pid)] = (ppg, rpg, apg)
+
     patched = 0
     offset = 0
     batch = 5000
@@ -37,13 +43,18 @@ def main():
             player_name = str(meta.get("player_name") or "")
             changed = False
             pos = h = w = None
+            ppg = rpg = apg = None
             if player_id in player_meta:
                 pos, h, w = player_meta[player_id]
+                if player_id in stats:
+                    ppg, rpg, apg = stats[player_id]
             elif player_name:
-                cur.execute('SELECT position, height_in, weight_lb FROM players WHERE full_name = ? LIMIT 1', (player_name,))
+                cur.execute('SELECT player_id, position, height_in, weight_lb FROM players WHERE full_name = ? LIMIT 1', (player_name,))
                 row = cur.fetchone()
                 if row:
-                    pos, h, w = row
+                    pid, pos, h, w = row
+                    if pid and str(pid) in stats:
+                        ppg, rpg, apg = stats[str(pid)]
             if pos is not None:
                 if meta.get("position") != pos:
                     meta["position"] = pos
@@ -61,6 +72,18 @@ def main():
                     changed = True
                 if meta.get("weight") != int(w):
                     meta["weight"] = int(w)
+                    changed = True
+            if ppg is not None:
+                if meta.get("ppg") != float(ppg):
+                    meta["ppg"] = float(ppg)
+                    changed = True
+            if rpg is not None:
+                if meta.get("rpg") != float(rpg):
+                    meta["rpg"] = float(rpg)
+                    changed = True
+            if apg is not None:
+                if meta.get("apg") != float(apg):
+                    meta["apg"] = float(apg)
                     changed = True
             if changed:
                 batch_changed += 1

@@ -1112,6 +1112,8 @@ def _render_profile_overlay(player_id: str):
 
         height_disp = height
         weight_disp = weight
+        h_pct = w_pct = 0
+        pos_for_pct = position
         try:
             from src.position_calibration import calculate_percentile, map_db_to_canonical
             pos_for_pct = canonical_pos
@@ -1129,6 +1131,14 @@ def _render_profile_overlay(player_id: str):
         except Exception:
             pass
 
+        auto_scout = ""
+        try:
+            from src.narrative import generate_physical_profile
+            stats_dict = profile.get("stats") or {"ppg": ppg, "rpg": rpg, "apg": apg}
+            auto_scout = generate_physical_profile(title, pos_for_pct, h_pct, w_pct, biometric.get("tags"), stats_dict)
+        except Exception:
+            auto_scout = ""
+
         st.markdown(
             f"""
             <div style="background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
@@ -1139,6 +1149,7 @@ def _render_profile_overlay(player_id: str):
                   <div style="font-size:2.1rem; font-weight:700; color:white; margin-top:2px;">{title}</div>
                   <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height_disp} • {weight_disp}</div>
                   <div style="margin-top:6px; opacity:0.7; font-size:0.95rem;">HS: {hs}</div>
+                  <div style="margin-top:6px; opacity:0.85; font-size:0.95rem;">{auto_scout}</div>
                 </div>
                 <div style="text-align:right; min-width:180px;">
                   <div style="font-size:0.9rem; opacity:0.7;">{season_label} Production</div>
@@ -2765,78 +2776,78 @@ elif st.session_state.app_mode == "Search":
                             chart = chart.rename(columns={color_col: "Position"})
                         st.scatter_chart(chart, x="Weight", y="Height", color="Position" if color_col else None)
                 if map_mode == "Skill Map":
-                try:
-                    import chromadb
-                    from src.visuals import generate_pca_coordinates
-                    import pandas as pd
-                    client = chromadb.PersistentClient(path=os.path.join(os.getcwd(), "data/vector_db"))
-                    collection = client.get_collection(name="skout_plays")
-                    names = []
-                    sources = []
-                    positions = []
-                    heights = []
-                    embeddings = []
-                    # shortlist
-                    for r in roster:
-                        pname = r.get("name")
-                        if not pname:
-                            continue
-                        conn = sqlite3.connect(DB_PATH_STR)
-                        cur = conn.cursor()
-                        cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
-                        row = cur.fetchone()
-                        if not row:
-                            cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                    try:
+                        import chromadb
+                        from src.visuals import generate_pca_coordinates
+                        import pandas as pd
+                        client = chromadb.PersistentClient(path=os.path.join(os.getcwd(), "data/vector_db"))
+                        collection = client.get_collection(name="skout_plays")
+                        names = []
+                        sources = []
+                        positions = []
+                        heights = []
+                        embeddings = []
+                        # shortlist
+                        for r in roster:
+                            pname = r.get("name")
+                            if not pname:
+                                continue
+                            conn = sqlite3.connect(DB_PATH_STR)
+                            cur = conn.cursor()
+                            cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
                             row = cur.fetchone()
-                        conn.close()
-                        if not row:
-                            continue
-                        play_id = row[0]
-                        res = collection.get(ids=[play_id], include=["embeddings", "metadatas"])
-                        emb = res.get("embeddings")
-                        if emb is None or len(emb) == 0:
-                            continue
-                        embeddings.append(emb[0])
-                        names.append(pname)
-                        sources.append("Shortlist")
-                        positions.append(r.get("canonical_position") or r.get("position") or "")
-                        heights.append(r.get("height_in") or "")
-                    # search results
-                    recent = (st.session_state.get("search_results") or [])[:10]
-                    for r in recent:
-                        pname = r.get("Player")
-                        if not pname:
-                            continue
-                        conn = sqlite3.connect(DB_PATH_STR)
-                        cur = conn.cursor()
-                        cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
-                        row = cur.fetchone()
-                        if not row:
-                            cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                            if not row:
+                                cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                                row = cur.fetchone()
+                            conn.close()
+                            if not row:
+                                continue
+                            play_id = row[0]
+                            res = collection.get(ids=[play_id], include=["embeddings", "metadatas"])
+                            emb = res.get("embeddings")
+                            if emb is None or len(emb) == 0:
+                                continue
+                            embeddings.append(emb[0])
+                            names.append(pname)
+                            sources.append("Shortlist")
+                            positions.append(r.get("canonical_position") or r.get("position") or "")
+                            heights.append(r.get("height_in") or "")
+                        # search results
+                        recent = (st.session_state.get("search_results") or [])[:10]
+                        for r in recent:
+                            pname = r.get("Player")
+                            if not pname:
+                                continue
+                            conn = sqlite3.connect(DB_PATH_STR)
+                            cur = conn.cursor()
+                            cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
                             row = cur.fetchone()
-                        conn.close()
-                        if not row:
-                            continue
-                        play_id = row[0]
-                        res = collection.get(ids=[play_id], include=["embeddings"])
-                        emb = res.get("embeddings")
-                        if emb is None or len(emb) == 0:
-                            continue
-                        embeddings.append(emb[0])
-                        names.append(pname)
-                        sources.append("Search")
-                        positions.append(r.get("Position") or "")
-                        heights.append(r.get("Height") or "")
-                    if embeddings:
-                        coords = generate_pca_coordinates(embeddings)
-                        df_galaxy = pd.DataFrame({"x": [c[0] for c in coords], "y": [c[1] for c in coords], "Player": names, "Source": sources, "Position": positions, "Height": heights})
-                        import altair as alt
-                        chart = alt.Chart(df_galaxy).mark_circle(size=120).encode(
-                            x="x", y="y", color="Position", shape="Source", tooltip=["Player", "Position", "Height", "Source"]
-                        )
-                        st.altair_chart(chart, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"Galaxy view unavailable: {e}")
+                            if not row:
+                                cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                                row = cur.fetchone()
+                            conn.close()
+                            if not row:
+                                continue
+                            play_id = row[0]
+                            res = collection.get(ids=[play_id], include=["embeddings"])
+                            emb = res.get("embeddings")
+                            if emb is None or len(emb) == 0:
+                                continue
+                            embeddings.append(emb[0])
+                            names.append(pname)
+                            sources.append("Search")
+                            positions.append(r.get("Position") or "")
+                            heights.append(r.get("Height") or "")
+                        if embeddings:
+                            coords = generate_pca_coordinates(embeddings)
+                            df_galaxy = pd.DataFrame({"x": [c[0] for c in coords], "y": [c[1] for c in coords], "Player": names, "Source": sources, "Position": positions, "Height": heights})
+                            import altair as alt
+                            chart = alt.Chart(df_galaxy).mark_circle(size=120).encode(
+                                x="x", y="y", color="Position", shape="Source", tooltip=["Player", "Position", "Height", "Source"]
+                            )
+                            st.altair_chart(chart, use_container_width=True)
+                    except Exception as e:
+                        st.warning(f"Galaxy view unavailable: {e}")
             csv_data = generate_synergy_csv(roster)
             report = generate_text_report(roster)
             packet = generate_team_packet(roster)
