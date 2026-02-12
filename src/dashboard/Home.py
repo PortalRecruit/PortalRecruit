@@ -992,8 +992,9 @@ def _render_profile_overlay(player_id: str):
         tag_line = " | ".join([t.title() for t in (biometric.get("tags") or [])])
 
         ai_position_label = "—"
+        canonical_pos = None
         try:
-            from src.position_calibration import score_positions, topk
+            from src.position_calibration import score_positions, topk, calculate_percentile, map_db_to_canonical
 
             alpha, beta = _load_position_weights()
             h_val = profile.get("height_in")
@@ -1008,6 +1009,7 @@ def _render_profile_overlay(player_id: str):
             top = topk(scores, k=1)
             if top:
                 canon, score = top[0]
+                canonical_pos = canon
                 max_score = max(scores.values()) or 1.0
                 conf = max(0.0, min(1.0, float(score) / float(max_score)))
                 ai_position_label = f"{canon} ({conf * 100:.0f}%)"
@@ -1108,6 +1110,25 @@ def _render_profile_overlay(player_id: str):
         position = profile.get("position") or "—"
         score_tag = f"Recruit Score {score:.1f}" if score is not None else "Recruit Score —"
 
+        height_disp = height
+        weight_disp = weight
+        try:
+            from src.position_calibration import calculate_percentile, map_db_to_canonical
+            pos_for_pct = canonical_pos
+            if not pos_for_pct:
+                mapped = map_db_to_canonical(position)
+                pos_for_pct = mapped[0] if mapped else position
+            if pos_for_pct and profile.get("height_in"):
+                h_pct = calculate_percentile(profile.get("height_in"), pos_for_pct, metric="h")
+                if h_pct:
+                    height_disp = f"{height} ({h_pct}th %ile for {pos_for_pct})"
+            if pos_for_pct and profile.get("weight_lb"):
+                w_pct = calculate_percentile(profile.get("weight_lb"), pos_for_pct, metric="w")
+                if w_pct:
+                    weight_disp = f"{weight} ({w_pct}th %ile for {pos_for_pct})"
+        except Exception:
+            pass
+
         st.markdown(
             f"""
             <div style="background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
@@ -1116,7 +1137,7 @@ def _render_profile_overlay(player_id: str):
                 <div>
                   <div style="font-size:1.05rem; letter-spacing:0.5px; text-transform:uppercase; opacity:0.7;">{team_label}</div>
                   <div style="font-size:2.1rem; font-weight:700; color:white; margin-top:2px;">{title}</div>
-                  <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height} • {weight}</div>
+                  <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height_disp} • {weight_disp}</div>
                   <div style="margin-top:6px; opacity:0.7; font-size:0.95rem;">HS: {hs}</div>
                 </div>
                 <div style="text-align:right; min-width:180px;">
@@ -2681,6 +2702,9 @@ elif st.session_state.app_mode == "Search":
                         st.error("One or both players not found in DB.")
                     else:
                         comp = compare_players(a_profile, b_profile, query=query_fit)
+                        from src.visuals import generate_radar_chart
+                        fig = generate_radar_chart(a_profile, b_profile, query=query_fit)
+                        st.plotly_chart(fig, use_container_width=True)
                         left, right = st.columns(2)
                         with left:
                             st.markdown("#### " + str(a_profile.get("name")))

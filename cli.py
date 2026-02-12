@@ -424,11 +424,33 @@ if __name__ == "__main__":
             print("One or both players not found in DB.")
             sys.exit(1)
         comp = compare_players(a_profile, b_profile, query=args.query)
+        from src.position_calibration import calculate_percentile, map_db_to_canonical
+
+        def _pos_for(player):
+            pos = player.get("position") or ""
+            mapped = map_db_to_canonical(pos)
+            return mapped[0] if mapped else pos
+
+        pos_a = _pos_for(a_profile)
+        pos_b = _pos_for(b_profile)
+        h_pct_a = calculate_percentile(a_profile.get("height_in"), pos_a, metric="h")
+        w_pct_a = calculate_percentile(a_profile.get("weight_lb"), pos_a, metric="w")
+        h_pct_b = calculate_percentile(b_profile.get("height_in"), pos_b, metric="h")
+        w_pct_b = calculate_percentile(b_profile.get("weight_lb"), pos_b, metric="w")
+
         print("\n⚔️ Player Comparison")
         print("-" * 50)
         print(f"Player A: {a_profile.get('name')}")
         print(f"Player B: {b_profile.get('name')}")
         print("-")
+        if a_profile.get("height_in"):
+            print(f"Height A: {int(a_profile.get('height_in'))}\" ({h_pct_a}th %ile)")
+        if b_profile.get("height_in"):
+            print(f"Height B: {int(b_profile.get('height_in'))}\" ({h_pct_b}th %ile)")
+        if a_profile.get("weight_lb"):
+            print(f"Weight A: {int(a_profile.get('weight_lb'))} lb ({w_pct_a}th %ile)")
+        if b_profile.get("weight_lb"):
+            print(f"Weight B: {int(b_profile.get('weight_lb'))} lb ({w_pct_b}th %ile)")
         print(comp.get("height_diff"))
         print(comp.get("weight_diff"))
         print(comp.get("ppg_diff"))

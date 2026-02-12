@@ -353,6 +353,26 @@ def topk(scores: Dict[str, float], k: int = 3) -> List[Tuple[str, float]]:
     return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:max(1, k)]
 
 
+def calculate_percentile(value: Optional[float], position: str, metric: str = "h") -> int:
+    if value is None:
+        return 0
+    pos = (position or "").upper()
+    if pos not in POSITION_SIZE_PRIORS:
+        return 0
+    cfg = POSITION_SIZE_PRIORS.get(pos, {})
+    if metric == "w":
+        mu = cfg.get("w_mu")
+        sigma = cfg.get("w_sigma")
+    else:
+        mu = cfg.get("h_mu")
+        sigma = cfg.get("h_sigma")
+    if mu is None or sigma in (None, 0):
+        return 0
+    z = (float(value) - float(mu)) / float(sigma)
+    pct = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+    return max(0, min(99, int(pct * 100)))
+
+
 # ----------------------------
 # Calibration
 # ----------------------------
