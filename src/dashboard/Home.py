@@ -821,6 +821,7 @@ def _render_profile_overlay(player_id: str):
         if st.button("Back to search results", key=f"back_missing_{pid or 'unknown'}"):
             _clear_qp_safe("player")
             st.session_state["selected_player"] = None
+            st.session_state["pending_selected_player"] = None
             st.rerun()
         return
     title = profile.get("name", "Player Profile")
@@ -1133,6 +1134,7 @@ def _render_profile_overlay(player_id: str):
             if cols[0].button("<", key="back_profile"):
                 _clear_qp_safe("player")
                 st.session_state["selected_player"] = None
+                st.session_state["pending_selected_player"] = None
                 st.rerun()
             body()
         show_dialog()
@@ -1142,6 +1144,7 @@ def _render_profile_overlay(player_id: str):
         if cols[0].button("<", key="back_profile"):
             _clear_qp_safe("player")
             st.session_state["selected_player"] = None
+            st.session_state["pending_selected_player"] = None
             st.rerun()
         body()
 
@@ -1421,7 +1424,7 @@ if st.session_state.app_mode == "Admin":
 elif st.session_state.app_mode == "Search":
     render_header()
     qp = _get_qp_safe()
-    target_pid = st.session_state.get("selected_player")
+    target_pid = st.session_state.get("pending_selected_player") or st.session_state.get("selected_player")
     
     if not target_pid and "player" in qp:
         raw_pid = qp["player"][0] if isinstance(qp["player"], list) else qp["player"]
@@ -1429,6 +1432,7 @@ elif st.session_state.app_mode == "Search":
 
     if target_pid:
         pid = _normalize_player_id(target_pid)
+        st.session_state["pending_selected_player"] = None
         if pid:
             _set_qp_safe("player", pid)
             st.session_state["selected_player"] = pid
@@ -1552,6 +1556,7 @@ elif st.session_state.app_mode == "Search":
                 label = " | ".join(detail_parts)
 
                 if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
+                    st.session_state["pending_selected_player"] = pid
                     st.session_state["selected_player"] = pid
                     _set_qp_safe("player", pid)
                     st.rerun()
