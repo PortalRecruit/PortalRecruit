@@ -254,6 +254,7 @@ def semantic_search(
     diversify_by_player: bool = True,
     meta_filters: dict[str, set[str]] | None = None,
     biometric_tags: dict[str, set[str]] | None = None,
+    strict_positions: set[str] | None = None,
 ) -> list[str]:
     """Run semantic search with normalized embeddings + optional rerank blend.
 
@@ -274,9 +275,22 @@ def semantic_search(
             canon, score = top[0]
             max_score = max(scores.values()) or 1.0
             conf = float(score) / float(max_score)
-            if conf > 0.8 and canon == "CENTER":
-                where_filter = {"position": {"$in": ["C", "F/C"]}}
-                print("Detected Canonical Position: CENTER")
+            if conf > 0.8:
+                if canon == "CENTER":
+                    where_filter = {"position": {"$in": ["C", "F/C"]}}
+                    print("Detected Canonical Position: CENTER")
+                elif canon == "POINT_GUARD":
+                    where_filter = {"position": {"$in": ["PG", "G"]}}
+                    print("Detected Canonical Position: POINT_GUARD")
+                elif canon == "SHOOTING_GUARD":
+                    where_filter = {"position": {"$in": ["SG", "G"]}}
+                    print("Detected Canonical Position: SHOOTING_GUARD")
+                elif canon == "POWER_FORWARD":
+                    where_filter = {"position": {"$in": ["PF", "F", "F/C"]}}
+                    print("Detected Canonical Position: POWER_FORWARD")
+                elif canon == "SMALL_FORWARD":
+                    where_filter = {"position": {"$in": ["SF", "F", "F/G"]}}
+                    print("Detected Canonical Position: SMALL_FORWARD")
     except Exception:
         pass
 
