@@ -190,7 +190,22 @@ def _lexical_overlap_score(query_tokens: set[str], doc: str | None, meta: dict |
     tag_tokens = _parse_tags(meta)
     overlap = len(query_tokens.intersection(doc_tokens))
     tag_overlap = len(query_tokens.intersection(tag_tokens))
-    return float(overlap) + (0.5 * float(tag_overlap))
+    action_boost = _action_keyword_boost(doc or "")
+    return float(overlap) + (0.5 * float(tag_overlap)) + action_boost
+
+
+def _action_keyword_boost(doc: str) -> float:
+    text = (doc or "").lower()
+    positive = ["made 3", "make 3", "dunk", "assist", "layup", "rim", "block", "steal"]
+    negative = ["kicked ball", "foul", "turnover", "violation"]
+    boost = 0.0
+    for term in positive:
+        if term in text:
+            boost += 0.3
+    for term in negative:
+        if term in text:
+            boost -= 0.3
+    return boost
 
 
 def _phrase_boost(doc: str | None, phrases: Iterable[str]) -> float:
@@ -308,6 +323,7 @@ def semantic_search(
                     score += 0.08 * float(tag_overlap)
                 if boost_tag_set and tag_overlap:
                     score += 0.05 * float(tag_overlap)
+                score = max(0.0, min(1.0, score))
                 ranked.append((pid, score))
             ranked.sort(key=lambda x: x[1], reverse=True)
             ranked_ids = [r[0] for r in ranked]

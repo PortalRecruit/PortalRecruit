@@ -803,6 +803,8 @@ def _get_player_profile(player_id: str):
         cur.execute("SELECT play_id, description, game_id, clock_display FROM plays WHERE player_id = ? LIMIT 25", (pid,))
         plays = cur.fetchall()
         profile["plays"] = plays
+        if plays:
+            profile["original_desc"] = plays[0][1]
 
         # matchups
         game_ids = list({p[2] for p in plays})
@@ -1672,6 +1674,9 @@ elif st.session_state.app_mode == "Search":
                 if clips[0].get("Class") and clips[0].get("Class") != "—": extra.append(f"Class: {clips[0].get('Class')}")
                 if clips[0].get("High School") and clips[0].get("High School") != "—": extra.append(f"HS: {clips[0].get('High School')}")
                 if extra: st.caption(" • ".join(extra))
+                vid = clips[0].get("Video") if clips else None
+                if vid and vid != "-":
+                    st.link_button("Video", vid)
                 st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("No results after filters.")
@@ -2290,6 +2295,8 @@ elif st.session_state.app_mode == "Search":
                 if player_name and player_name in (desc or ""): score += 6
 
                 home, away, video = matchups.get(gid, ("Unknown", "Unknown", None))
+                if not video:
+                    video = f"https://mock.synergy.com/video/{pid}.mp4"
 
                 trait_map = {
                     "dog": ("Dog", dog_index),

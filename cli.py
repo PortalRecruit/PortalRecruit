@@ -252,6 +252,7 @@ def run_search(query: str, n_results: int = 5, debug: bool = False) -> None:
             video_link = f"https://mock.synergy.com/video/{play_id}.mp4"
 
         score = _lexical_overlap_score(query_tokens, desc, {"tags": tags})
+        score = min(1.0, max(0.0, score))
         snippet = _best_snippet(desc, query)
 
         results.append({
