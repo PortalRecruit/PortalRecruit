@@ -60,7 +60,13 @@ def generate_radar_chart(player_a: Dict[str, Any], player_b: Dict[str, Any], que
     b_vals = [h_pct_b, w_pct_b, _fit_score(player_b), _overall(player_b)]
 
     fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=a_vals, theta=categories, fill="toself", name=player_a.get("name", "Player A")))
-    fig.add_trace(go.Scatterpolar(r=b_vals, theta=categories, fill="toself", name=player_b.get("name", "Player B")))
-    fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=True)
+    fig.add_trace(go.Scatterpolar(r=a_vals, theta=categories, fill="toself", name=player_a.get("name", "Player A"), line=dict(color="#31d0ff")))
+    fig.add_trace(go.Scatterpolar(r=b_vals, theta=categories, fill="toself", name=player_b.get("name", "Player B"), line=dict(color="#7f8ba3")))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=True,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", color="#f3f6ff"),
+    )
     return fig

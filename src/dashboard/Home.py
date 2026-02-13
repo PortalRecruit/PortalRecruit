@@ -22,6 +22,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from src import theme as theme
+try:
+    theme.inject_warroom_theme()
+except Exception:
+    pass
+
 # --- 2. ROBUST PATH SETUP ---
 # Snowflake often changes where files are mounted. We dynamically find the 'src' folder.
 try:
@@ -1475,12 +1481,12 @@ def render_header():
         """
     else:
         banner_html = """
-        <div style=\"display:flex; justify-content:center; margin-bottom:12px;\">
-             <img src=\"https://portalrecruit.github.io/PortalRecruit/PRLOGO.png" style=\"max-width:92vw; width:680px; height:auto; object-fit:contain; display:block;\">
+        <div style=\"display:flex; justify-content:center; margin-bottom:12px; font-size:2rem; font-weight:800;\">
+             PORTAL RECRUIT
         </div>
         """
     hero_html = f"<div class=\"pr-hero\">{banner_html}</div>"
-    components.html(hero_html, height=360)
+    components.html(hero_html, height=240)
 
 
 def _safe_float(val, default=0.0):
@@ -1893,15 +1899,27 @@ elif st.session_state.app_mode == "Search":
                         ]
                         label = " | ".join(detail_parts)
 
-                        st.markdown("<div class='pr-result-card'>", unsafe_allow_html=True)
-                        if pid and st.button(label, key=f"btn_{pid}", use_container_width=True):
+                        card_html = f"""
+                        <div class="pr-card">
+                          <div class="pr-name">{player}</div>
+                          <div class="pr-meta">{pos} • {_fmt_height(ht) if ht else '—'} • {f'{int(wt)} lbs' if wt else '—'} • {team}</div>
+                          <div class="pr-stats">
+                            <div class="pr-stat"><div class="pr-stat-k">Score</div><div class="pr-stat-v">{score:.1f}</div></div>
+                            <div class="pr-stat"><div class="pr-stat-k">PPG</div><div class="pr-stat-v">{ppg_val if ppg_val is not None else 0:.1f}</div></div>
+                            <div class="pr-stat"><div class="pr-stat-k">RPG</div><div class="pr-stat-v">{rpg_val if rpg_val is not None else 0:.1f}</div></div>
+                          </div>
+                        </div>
+                        """
+                        st.markdown(card_html, unsafe_allow_html=True)
+                        btn_cols = st.columns([1, 1, 2])
+                        if pid and btn_cols[0].button("View", key=f"btn_{pid}"):
                             st.session_state["pending_selected_player"] = pid
                             st.session_state["selected_player"] = pid
                             _set_qp_safe("player", pid)
                             st.rerun()
 
                         from src.roster import add_player
-                        if st.button("⭐ Add to Shortlist", key=f"shortlist_{pid}"):
+                        if btn_cols[1].button("⭐ Shortlist", key=f"shortlist_{pid}"):
                             add_player({
                                 "player_id": pid,
                                 "name": player,
@@ -2904,24 +2922,34 @@ elif st.session_state.app_mode == "Search":
         st.markdown("### 🏆 The Big Board")
         from src.roster import get_roster
         roster = get_roster()
-        tiers = ["S (Starter)", "A (Rotation)", "B (Deep Bench)", "C (Develop)", "F (Cut)", "Unranked"]
         from src.archetypes import assign_archetypes
-        for tier in tiers[:-1]:
-            group = [p for p in roster if (p.get("tier") or "Unranked") == tier]
-            st.markdown(f"#### {tier} — {len(group)}")
-            if not group:
-                st.caption("No players")
-                continue
-            for p in group:
-                stats = {"ppg": p.get("ppg"), "rpg": p.get("rpg"), "apg": p.get("apg"), "weight_lb": p.get("weight_lb")}
-                badges = assign_archetypes(stats, " ".join(p.get("biometric_tags") or []), p.get("position"))
-                badge_str = " ".join(badges) if badges else ""
-                st.markdown("- **{}** {}".format(p.get("name"), badge_str))
+        tiers = ["S (Starter)", "A (Rotation)", "B (Deep Bench)", "C (Develop)"]
+        tier_groups = {t: [p for p in roster if (p.get("tier") or "Unranked") == t] for t in tiers}
+
+        s_col, a_col, b_col, c_col = st.columns(4)
+        tier_map = {
+            "S (Starter)": (s_col, "pr-tier--s"),
+            "A (Rotation)": (a_col, "pr-tier--a"),
+            "B (Deep Bench)": (b_col, "pr-tier--b"),
+            "C (Develop)": (c_col, "pr-tier--c"),
+        }
+        for tier, (col, cls) in tier_map.items():
+            with col:
+                st.markdown(f"<div class=\"pr-tier {cls}\">{tier}</div>", unsafe_allow_html=True)
+                for p in tier_groups.get(tier, []):
+                    stats = {"ppg": p.get("ppg"), "rpg": p.get("rpg"), "apg": p.get("apg"), "weight_lb": p.get("weight_lb")}
+                    badges = assign_archetypes(stats, " ".join(p.get("biometric_tags") or []), p.get("position"))
+                    badge_str = " ".join(badges) if badges else ""
+                    card = (
+                        "<div class=\"pr-card\">"
+                        f"<div class=\"pr-name\">{p.get('name')}</div>"
+                        f"<div class=\"pr-meta\">{p.get('position') or ''}</div>"
+                        f"<div class=\"pr-meta\">{badge_str}</div>"
+                        "</div>"
+                    )
+                    st.markdown(card, unsafe_allow_html=True)
 
         inbox = [p for p in roster if (p.get("tier") or "Unranked") == "Unranked"]
         st.markdown(f"#### Inbox (Unranked) — {len(inbox)}")
         for p in inbox:
-            stats = {"ppg": p.get("ppg"), "rpg": p.get("rpg"), "apg": p.get("apg"), "weight_lb": p.get("weight_lb")}
-            badges = assign_archetypes(stats, " ".join(p.get("biometric_tags") or []), p.get("position"))
-            badge_str = " ".join(badges) if badges else ""
-            st.markdown("- **{}** {}".format(p.get("name"), badge_str))
+            st.markdown(f"- **{p.get('name')}**")
