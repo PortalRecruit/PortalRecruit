@@ -1922,9 +1922,17 @@ elif st.session_state.app_mode == "Search":
                         ]
                         label = " | ".join(detail_parts)
 
+                        driver = ""
+                        breakdown = clips[0].get("Score Breakdown") if clips else {}
+                        if isinstance(breakdown, dict):
+                            driver = breakdown.get("primary_driver") or ""
+                        badge = f"<span class='pr-pill pr-pill--sniper'>🔥 Driver: {driver}</span>" if driver else ""
                         card_html = f"""
                         <div class="pr-card">
-                          <div class="pr-name">{player}</div>
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div class="pr-name">{player}</div>
+                            {badge}
+                          </div>
                           <div class="pr-meta">{pos} • {_fmt_height(ht) if ht else '—'} • {f'{int(wt)} lbs' if wt else '—'} • {team}</div>
                           <div class="pr-stats">
                             <div class="pr-stat"><div class="pr-stat-k">Score</div><div class="pr-stat-v">{score:.1f}</div></div>

@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import List
 
 CONCEPT_DEFINITIONS = {
-    "SHOOTING": "elite three point shooter deep range high percentage catch and shoot",
+    "SHOOTING": "elite three point shooter deep range high percentage catch and shoot 40% 50/40/90 splash",
     "PLAYMAKING": "elite passer high assist turnover ratio court vision floor general",
-    "DEFENSE": "lockdown defender steals blocks active hands stops the ball",
+    "DEFENSE": "lockdown defender steals blocks active hands stops the ball DPOY all-defense first team",
     "REBOUNDING": "relentless rebounder crashes glass boxes out high motor",
     "ATHLETICISM": "elite vertical leap explosive speed quick first step dunker",
 }

@@ -561,6 +561,34 @@ def semantic_search(
                 )
                 ranked.append((pid, score))
                 breakdowns[pid] = breakdown
+
+            # Concept re-rank
+            if active_concepts:
+                concept_vecs = [encode_query(c) for c in active_concepts]
+                re_ranked = []
+                for (pid, base_score), (pid2, _doc, _dist, meta, _lex) in zip(ranked, rerank_pool):
+                    if pid != pid2:
+                        continue
+                    try:
+                        # use candidate embedding by fetching from collection
+                        cand = collection.get(ids=[pid], include=["embeddings"])
+                        emb = cand.get("embeddings")
+                        if emb is None or len(emb) == 0:
+                            concept_score = 0.0
+                        else:
+                            vec = emb[0]
+                            concept_score = max(sum(a * b for a, b in zip(vec, cvec)) for cvec in concept_vecs)
+                    except Exception:
+                        concept_score = 0.0
+                    final_score = (base_score * 0.4) + (concept_score * 0.6)
+                    re_ranked.append((pid, final_score, concept_score))
+                re_ranked.sort(key=lambda x: x[1], reverse=True)
+                ranked = [(pid, score) for pid, score, _ in re_ranked]
+                for pid, score, concept_score in re_ranked:
+                    breakdowns.setdefault(pid, {})
+                    breakdowns[pid]["concept_score"] = concept_score
+                    breakdowns[pid]["primary_driver"] = active_concepts[0] if active_concepts else "Vector"
+
             ranked.sort(key=lambda x: x[1], reverse=True)
             ranked_ids = [r[0] for r in ranked]
             if not diversify_by_player:
