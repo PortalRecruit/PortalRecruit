@@ -1083,22 +1083,34 @@ def _render_profile_overlay(player_id: str):
                 else:
                     st.json(vision)
 
-        with st.expander("🧬 Similar Players"):
-            from src.similarity import find_similar_players
-            sims = []
-            try:
-                sims = find_similar_players(title, top_k=3)
-            except Exception:
+        overview_tab, film_tab = st.tabs(["Overview", "🎥 Film Room"])
+        with overview_tab:
+            with st.expander("🧬 Similar Players"):
+                from src.similarity import find_similar_players
                 sims = []
-            if not sims:
-                st.info("No similar players found.")
+                try:
+                    sims = find_similar_players(title, top_k=3)
+                except Exception:
+                    sims = []
+                if not sims:
+                    st.info("No similar players found.")
+                else:
+                    for s in sims:
+                        label = f"{s.get('player_name')} | {s.get('position') or '—'} | {s.get('similarity'):.2f}"
+                        if st.button(label, key=f"sim_{s.get('player_name')}"):
+                            _set_qp_safe("player", s.get("player_name"))
+                            st.session_state["selected_player"] = s.get("player_name")
+                            st.rerun()
+
+        with film_tab:
+            from src.film import extract_clips
+            clips_text = "".join([r.get("Play", "") for r in (st.session_state.get("last_rows") or []) if r.get("Player") == title])
+            clips = extract_clips(clips_text)
+            if not clips:
+                st.info("No clips parsed yet.")
             else:
-                for s in sims:
-                    label = f"{s.get('player_name')} | {s.get('position') or '—'} | {s.get('similarity'):.2f}"
-                    if st.button(label, key=f"sim_{s.get('player_name')}"):
-                        _set_qp_safe("player", s.get("player_name"))
-                        st.session_state["selected_player"] = s.get("player_name")
-                        st.rerun()
+                for c in clips:
+                    st.markdown(f"- {c}")
 
         cache = st.session_state.get("player_meta_cache", {}) or {}
         meta_cache = cache.get(pid, {}) if pid else {}
@@ -1729,6 +1741,7 @@ with st.sidebar:
     search_beta = st.slider("Beta (Size)", 0.0, 10.0, 3.0, 0.1)
     use_hyde = st.toggle("🧠 Deep Search (HyDE)", value=False, help="Generates a 'Phantom Profile' to find players matching the concept of your search.")
     dna_target = st.text_input("🧬 Find 'The Next'...", value="")
+    st.session_state["dna_target"] = dna_target
     emphasis = st.multiselect(
         "💎 Emphasis Traits",
         ["🏀 Shooting", "🧠 Playmaking", "🛡️ Defense", "🚜 Rebounding", "⚡ Athleticism"],
@@ -1879,6 +1892,12 @@ elif st.session_state.app_mode == "Search":
                 if st.session_state.get("hyde_profile"):
                 with st.expander("🎯 Target Profile (AI Generated)", expanded=bool(st.session_state.get("dna_mode"))):
                     st.markdown(st.session_state.get("hyde_profile"))
+
+            if st.session_state.get("dna_constraints"):
+                cons = st.session_state.get("dna_constraints") or {}
+                pos_txt = ", ".join(cons.get("positions") or [])
+                min_h = cons.get("min_height_in")
+                st.markdown(f"<div class='pr-pill pr-pill--pg'>🔒 Auto-Filters Active: {pos_txt} | Height ≥ {min_h}</div>", unsafe_allow_html=True)
 
             if emphasis:
                 pills = " ".join([f"<span class='pr-pill pr-pill--sniper'>{t}</span>" for t in emphasis])
@@ -2175,6 +2194,7 @@ elif st.session_state.app_mode == "Search":
                             beta_override=search_beta,
                             use_hyde=use_hyde,
                             active_concepts=active_concepts,
+                            constraints=st.session_state.get("dna_constraints") or None,
                         )
                     except:
                         play_ids = []
@@ -2195,6 +2215,7 @@ elif st.session_state.app_mode == "Search":
                                 beta_override=search_beta,
                                 use_hyde=use_hyde,
                                 active_concepts=active_concepts,
+                                constraints=st.session_state.get("dna_constraints") or None,
                             )
                         except:
                             play_ids = []
@@ -2240,6 +2261,7 @@ elif st.session_state.app_mode == "Search":
                         beta_override=search_beta,
                         use_hyde=use_hyde,
                         active_concepts=active_concepts,
+                        constraints=st.session_state.get("dna_constraints") or None,
                     )
                 except:
                     st.error("Search index error.")
@@ -2263,20 +2285,24 @@ elif st.session_state.app_mode == "Search":
             if st.session_state.get("dna_target"):
                 try:
                     from src.hyde import generate_player_comp_bio
-                    dna_profile = generate_player_comp_bio(st.session_state.get("dna_target"))
-                    st.session_state["hyde_profile"] = dna_profile
+                    dna_payload = generate_player_comp_bio(st.session_state.get("dna_target"))
+                    st.session_state["hyde_profile"] = dna_payload.get("bio") if isinstance(dna_payload, dict) else str(dna_payload)
+                    st.session_state["dna_constraints"] = dna_payload.get("constraints") if isinstance(dna_payload, dict) else {}
                     st.session_state["dna_mode"] = True
                 except Exception:
                     st.session_state["hyde_profile"] = ""
+                    st.session_state["dna_constraints"] = {}
                     st.session_state["dna_mode"] = False
             elif use_hyde:
                 try:
                     from src.hyde import generate_hypothetical_bio
                     hyde_profile = generate_hypothetical_bio(query)
                     st.session_state["hyde_profile"] = hyde_profile
+                    st.session_state["dna_constraints"] = {}
                     st.session_state["dna_mode"] = False
                 except Exception:
                     st.session_state["hyde_profile"] = ""
+                    st.session_state["dna_constraints"] = {}
                     st.session_state["dna_mode"] = False
 
             if not play_ids:

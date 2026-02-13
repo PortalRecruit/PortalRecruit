@@ -388,6 +388,7 @@ def semantic_search(
     beta_override: float | None = None,
     use_hyde: bool = False,
     active_concepts: list[str] | None = None,
+    constraints: dict | None = None,
 ) -> list[str] | tuple[list[str], dict[str, dict]]:
     """Run semantic search with normalized embeddings + optional rerank blend.
 
@@ -448,6 +449,18 @@ def semantic_search(
                 concept_vec = encode_query(concept_text)
                 query_vec = [q + (0.2 * c) for q, c in zip(query_vec, concept_vec)]
                 print("Applied Boost:", concept_text[:24], "(Weight 0.2)")
+        # apply constraints if provided
+        if constraints:
+            c_positions = constraints.get("positions") or []
+            c_min_h = constraints.get("min_height_in")
+            if c_positions:
+                where_filter = where_filter or {}
+                where_filter["position"] = {"$in": c_positions}
+            # height constraint will be applied post-query because height may not be in metadata
+            if c_min_h is not None:
+                print(f"Applied Constraint: Height >= {c_min_h}")
+            if c_positions:
+                print(f"Applied Constraint: Positions in {c_positions}")
         results = collection.query(
             query_embeddings=[query_vec],
             n_results=fetch_n,
@@ -468,6 +481,105 @@ def semantic_search(
     docs = results.get("documents", [[]])[0]
     distances = results.get("distances", [[]])[0]
     metadatas = results.get("metadatas", [[]])[0]
+
+    if constraints:
+        min_h = constraints.get("min_height_in")
+        pos_allowed = set(constraints.get("positions") or [])
+        filtered = []
+        try:
+            conn = sqlite3.connect(os.path.join(os.getcwd(), "data/skout.db"))
+            cur = conn.cursor()
+        except Exception:
+            conn = None
+            cur = None
+        for pid, doc, dist, meta in zip(ids, docs, distances, metadatas):
+            h = None
+            pos = None
+            if isinstance(meta, dict):
+                h = meta.get("height_in") or meta.get("height")
+                pos = meta.get("position")
+            if (h is None or pos is None) and cur is not None:
+                pname = str((meta or {}).get("player_name") or "")
+                if pname:
+                    cur.execute("SELECT position, height_in FROM players WHERE full_name = ? LIMIT 1", (pname,))
+                    row = cur.fetchone()
+                    if row:
+                        pos = pos or row[0]
+                        h = h or row[1]
+            if pos_allowed:
+                pos_str = str(pos or "")
+                parts = [p.strip() for p in pos_str.split("/") if p.strip()]
+                if not parts:
+                    continue
+                if not any(p in pos_allowed for p in parts):
+                    continue
+            if min_h is not None:
+                try:
+                    if h is None or float(h) < float(min_h):
+                        continue
+                except Exception:
+                    continue
+            filtered.append((pid, doc, dist, meta))
+        if conn:
+            conn.close()
+        if filtered:
+            ids, docs, distances, metadatas = zip(*filtered)
+            ids, docs, distances, metadatas = list(ids), list(docs), list(distances), list(metadatas)
+        else:
+            # broaden search if constraints eliminate all
+            try:
+                results = collection.query(
+                    query_embeddings=[query_vec],
+                    n_results=max(fetch_n, 300),
+                    include=["documents", "distances", "metadatas"],
+                )
+                ids = results.get("ids", [[]])[0]
+                docs = results.get("documents", [[]])[0]
+                distances = results.get("distances", [[]])[0]
+                metadatas = results.get("metadatas", [[]])[0]
+            except Exception:
+                ids, docs, distances, metadatas = [], [], [], []
+            filtered = []
+            if ids:
+                try:
+                    conn = sqlite3.connect(os.path.join(os.getcwd(), "data/skout.db"))
+                    cur = conn.cursor()
+                except Exception:
+                    conn = None
+                    cur = None
+                for pid, doc, dist, meta in zip(ids, docs, distances, metadatas):
+                    h = None
+                    pos = None
+                    if isinstance(meta, dict):
+                        h = meta.get("height_in") or meta.get("height")
+                        pos = meta.get("position")
+                    if (h is None or pos is None) and cur is not None:
+                        pname = str((meta or {}).get("player_name") or "")
+                        if pname:
+                            cur.execute("SELECT position, height_in FROM players WHERE full_name = ? LIMIT 1", (pname,))
+                            row = cur.fetchone()
+                            if row:
+                                pos = pos or row[0]
+                                h = h or row[1]
+                    if pos_allowed:
+                        pos_str = str(pos or "")
+                        parts = [p.strip() for p in pos_str.split("/") if p.strip()]
+                        if not parts or not any(p in pos_allowed for p in parts):
+                            continue
+                    if min_h is not None:
+                        try:
+                            if h is None or float(h) < float(min_h):
+                                continue
+                        except Exception:
+                            continue
+                    filtered.append((pid, doc, dist, meta))
+                if conn:
+                    conn.close()
+            if filtered:
+                ids, docs, distances, metadatas = zip(*filtered)
+                ids, docs, distances, metadatas = list(ids), list(docs), list(distances), list(metadatas)
+            else:
+                ids, docs, distances, metadatas = [], [], [], []
 
     if not ids:
         return ([], {}) if return_breakdowns else []

@@ -61,18 +61,19 @@ def generate_hypothetical_bio(query_text: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def generate_player_comp_bio(target_player_name: str) -> str:
+def generate_player_comp_bio(target_player_name: str) -> dict:
     name = (target_player_name or "").strip()
     if not name:
-        return ""
+        return {"bio": "", "constraints": {}}
     client = _get_client()
     if client is None:
-        return FALLBACK
+        return {"bio": FALLBACK, "constraints": {"positions": ["F", "C"], "min_height_in": 77}}
 
     system = (
-        "You are an expert scout. Describe the playing style, physical profile, and skill set of "
-        "{name} as if they were an anonymous prospect. Focus on specific strengths and roles. "
-        "Do not mention their name."
+        "Analyze {name}. Return JSON with keys: bio, constraints. "
+        "Constraints should include positions (e.g., ['F','C']) and min_height_in. "
+        "The bio should describe the playing style, physical profile, and skill set as an anonymous prospect. "
+        "Do not mention the player's name."
     )
     resp = client.chat.completions.create(
         model=os.getenv("OPENAI_MODEL") or "gpt-4o",
@@ -80,4 +81,12 @@ def generate_player_comp_bio(target_player_name: str) -> str:
         temperature=0.4,
         max_tokens=220,
     )
-    return resp.choices[0].message.content.strip()
+    content = resp.choices[0].message.content.strip()
+    try:
+        import json
+        payload = json.loads(content)
+        if not payload.get("constraints"):
+            payload["constraints"] = {"positions": ["F", "C"], "min_height_in": 77}
+        return payload
+    except Exception:
+        return {"bio": content, "constraints": {"positions": ["F", "C"], "min_height_in": 77}}
