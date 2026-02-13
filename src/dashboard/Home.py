@@ -1788,7 +1788,25 @@ with st.sidebar:
         answer = ask_scout(question)
         try:
             with st.chat_message("assistant"):
-                st.write(answer)
+                lines = (answer or "").splitlines()
+                if len(lines) > 1 and re.match(r"^Here are the top", lines[0]) and re.match(r"^1\.", lines[1].strip()):
+                    rows = []
+                    for line in lines[1:]:
+                        m = re.match(r"^(\d+)\.\s+(.+?)\s+\((.+)\)", line.strip())
+                        if not m:
+                            continue
+                        rows.append({
+                            "Rank": int(m.group(1)),
+                            "Player": m.group(2),
+                            "Value": m.group(3),
+                        })
+                    if rows:
+                        st.markdown(lines[0])
+                        st.table(rows)
+                    else:
+                        st.write(answer)
+                else:
+                    st.write(answer)
         except Exception:
             st.info(answer)
     st.session_state["search_alpha"] = search_alpha

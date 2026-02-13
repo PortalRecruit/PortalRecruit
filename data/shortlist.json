@@ -1,0 +1,19 @@
+[
+  {
+    "player_id": "5fc065c6f68e52f8271ef2bd",
+    "name": "James Karnik",
+    "position": "F/C",
+    "height_in": 81.0,
+    "weight_lb": 250.0,
+    "class_year": "Senior",
+    "team": "Boston College",
+    "biometric_tags": [
+      "big",
+      "undersized",
+      "strong",
+      "post",
+      "bruiser"
+    ],
+    "canonical_position": "POWER_FORWARD"
+  }
+]
