@@ -421,6 +421,8 @@ if __name__ == "__main__":
     watch_add.add_argument("name")
     watch_add.add_argument("--query", required=True)
 
+    patterns = sub.add_parser("patterns_check")
+
     s_film = sub.add_parser("film_check")
     s_film.add_argument("name")
 
@@ -652,6 +654,31 @@ if __name__ == "__main__":
         from src.watchlist import save_search
         saved = save_search(args.name, {"query": args.query})
         print("Saved watchlist search." if saved else "Failed to save watchlist search.")
+    elif args.command == "patterns_check":
+        from src.analysis.clustering import discover_archetypes, name_clusters
+        from src.analysis.fit import SYSTEM_PROFILES, calculate_system_fit
+        cluster_map = discover_archetypes(n_clusters=8)
+        labels = name_clusters(cluster_map)
+        print("AI Archetypes:")
+        for cid, label in sorted(labels.items()):
+            print(f"- Cluster {cid}: {label}")
+
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT player_id FROM players WHERE LOWER(full_name)=LOWER(?) LIMIT 1", ("Malik Williams",))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("SELECT player_id FROM plays WHERE player_name LIKE '%Malik Williams%' LIMIT 1")
+            row = cur.fetchone()
+        conn.close()
+        if row:
+            pid = row[0]
+            five_out = calculate_system_fit(pid, SYSTEM_PROFILES["5-Out Motion"])
+            trad = calculate_system_fit(pid, SYSTEM_PROFILES["Traditional"])
+            print(f"Malik Williams 5-Out Motion Fit: {five_out:.1f}")
+            print(f"Malik Williams Traditional Fit: {trad:.1f}")
+        else:
+            print("Malik Williams not found for fit test.")
     elif args.command == "film_check":
         from src.film import clean_clip_text, analyze_tendencies
         import sqlite3

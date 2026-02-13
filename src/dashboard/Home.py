@@ -1088,7 +1088,7 @@ def _render_profile_overlay(player_id: str):
                 else:
                     st.json(vision)
 
-        overview_tab, film_tab, pitch_tab = st.tabs(["Overview", "🎥 Film Room", "📝 Recruiting Pitch"])
+        overview_tab, film_tab, pitch_tab, ai_tab = st.tabs(["Overview", "🎥 Film Room", "📝 Recruiting Pitch", "🧠 AI Insights"])
         with overview_tab:
             with st.expander("🧬 Similar Players"):
                 from src.similarity import find_similar_players
@@ -1176,6 +1176,22 @@ def _render_profile_overlay(player_id: str):
             }, team_needs)
             st.caption(f"Why this pitch? {reason}")
             st.code(pitch, language="text")
+
+        with ai_tab:
+            from src.analysis.clustering import get_cluster_label
+            from src.analysis.fit import SYSTEM_PROFILES, calculate_system_fit, grade_fit
+            st.markdown("### AI Archetype")
+            archetype = get_cluster_label(profile.get("player_id") or pid)
+            if archetype:
+                st.success(f"Classified as: {archetype}")
+            else:
+                st.info("Run patterns_check to generate AI archetypes.")
+
+            st.markdown("### System Fit")
+            system_name = st.selectbox("Select System", list(SYSTEM_PROFILES.keys()), key=f"system_fit_{pid}")
+            score = calculate_system_fit(profile.get("player_id") or pid, SYSTEM_PROFILES[system_name])
+            st.metric("Fit Score", f"{score:.1f}")
+            st.caption(f"Grade: {grade_fit(score)}")
 
         cache = st.session_state.get("player_meta_cache", {}) or {}
         meta_cache = cache.get(pid, {}) if pid else {}
