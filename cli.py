@@ -408,6 +408,9 @@ if __name__ == "__main__":
     s_list.add_argument("action", choices=["add", "view", "export", "clear"])
     s_list.add_argument("name", nargs="?")
 
+    s_film = sub.add_parser("film_check")
+    s_film.add_argument("name")
+
     sim = sub.add_parser("similar")
     sim.add_argument("name")
 
@@ -529,6 +532,36 @@ if __name__ == "__main__":
         elif args.action == "clear":
             clear_roster()
             print("Shortlist cleared.")
+    elif args.command == "film_check":
+        from src.film import clean_clip_text, analyze_tendencies
+        import sqlite3
+        pname = args.name
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.player_name, g.home_team, g.away_team, p.clock_seconds, p.clock_display, p.description
+            FROM plays p
+            JOIN games g ON g.game_id = p.game_id
+            WHERE p.player_name = ?
+            LIMIT 20
+        """, (pname,))
+        rows = cur.fetchall()
+        conn.close()
+        clips = []
+        for _, home, away, clock_s, clock_disp, desc in rows:
+            opponent = away if home == "Louisville" else home
+            sec = clock_s if clock_s is not None else None
+            if sec is None:
+                try:
+                    sec = int(clock_disp)
+                except Exception:
+                    sec = None
+            time = f"{int(sec)//60}:{int(sec)%60:02d}" if sec is not None else str(clock_disp)
+            clips.append(f"VS {opponent} ({time}) - {desc}")
+        cleaned = [clean_clip_text(c) for c in clips]
+        print("\n".join(cleaned[:10]))
+        print("\nTendencies:")
+        print(analyze_tendencies(cleaned))
     elif args.command == "similar":
         from src.similarity import find_similar_players
         matches = find_similar_players(args.name, top_k=5)

@@ -1103,15 +1103,30 @@ def _render_profile_overlay(player_id: str):
                             st.rerun()
 
         with film_tab:
-            from src.film import extract_clips
+            from src.film import extract_clips, clean_clip_text, analyze_tendencies
             st.markdown("### 🎥 Film Room (Synergy Logs)")
             clips_text = "".join([r.get("Play", "") for r in (st.session_state.get("last_rows") or []) if r.get("Player") == title])
-            clips = extract_clips(clips_text)
-            if not clips:
-                st.info("No clips parsed yet.")
-            else:
-                for c in clips:
-                    st.markdown(f"- {c}")
+            raw_clips = extract_clips(clips_text)
+            cleaned = [clean_clip_text(c) for c in raw_clips]
+            tendencies = analyze_tendencies(cleaned)
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if not cleaned:
+                    st.info("No clips parsed yet.")
+                else:
+                    for c in cleaned:
+                        btn = st.button(f"▶️ Watch", key=f"watch_{title}_{c[:20]}")
+                        if btn:
+                            st.toast(f"Playing Clip: {c}")
+                        st.markdown(f"- {c}")
+            with col2:
+                st.markdown("**Tendency Report**")
+                if not tendencies:
+                    st.info("No tendencies yet.")
+                else:
+                    for k, v in tendencies.items():
+                        st.progress(v)
+                        st.caption(f"{k}: {v}%")
 
         cache = st.session_state.get("player_meta_cache", {}) or {}
         meta_cache = cache.get(pid, {}) if pid else {}
