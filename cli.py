@@ -411,6 +411,9 @@ if __name__ == "__main__":
     team_add = sub.add_parser("team_add")
     team_add.add_argument("name")
 
+    valuation = sub.add_parser("valuation")
+    valuation.add_argument("name")
+
     s_film = sub.add_parser("film_check")
     s_film.add_argument("name")
 
@@ -542,6 +545,34 @@ if __name__ == "__main__":
         from src.team import add_to_team
         added = add_to_team(args.name)
         print("Added to My Team." if added else "Already on My Team or not found.")
+    elif args.command == "valuation":
+        from src.valuation import estimate_nil_value
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT player_id, full_name FROM players WHERE LOWER(full_name)=LOWER(?) LIMIT 1", (args.name,))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("SELECT player_id, full_name FROM players WHERE full_name LIKE ? LIMIT 1", (f"%{args.name.split()[-1]}%",))
+            row = cur.fetchone()
+        if not row:
+            conn.close()
+            print("Player not found in DB.")
+            sys.exit(1)
+        player_id, full_name = row
+        cur.execute("""
+            SELECT ppg, rpg, apg
+            FROM player_season_stats
+            WHERE player_id = ?
+            ORDER BY season_id DESC
+            LIMIT 1
+        """, (player_id,))
+        stats = cur.fetchone()
+        conn.close()
+        if not stats:
+            print("No stats found.")
+            sys.exit(1)
+        val = estimate_nil_value({"ppg": stats[0], "rpg": stats[1], "apg": stats[2]})
+        print(f"Est. NIL Value for {full_name}: {val}")
     elif args.command == "film_check":
         from src.film import clean_clip_text, analyze_tendencies
         import sqlite3

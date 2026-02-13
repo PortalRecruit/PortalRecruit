@@ -143,3 +143,21 @@ def calculate_impact(target_player_stats: dict, current_team_averages: dict) -> 
         impact[f"{metric}_diff"] = new_avg - current_avg
         impact[f"{metric}_new"] = new_avg
     return impact
+
+
+def audit_roster_balance(my_team_list: list[dict]) -> list[str]:
+    alerts: list[str] = []
+    counts = {"G": 0, "F": 0, "C": 0}
+    for p in my_team_list:
+        pos = str(p.get("position") or "").upper()
+        if "G" in pos:
+            counts["G"] += 1
+        if "F" in pos:
+            counts["F"] += 1
+        if "C" in pos:
+            counts["C"] += 1
+    if counts["G"] > 5:
+        alerts.append("⚠️ Too many Guards on roster.")
+    if counts["C"] == 0:
+        alerts.append("🚨 Needs Size: No Centers on roster.")
+    return alerts

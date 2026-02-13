@@ -1155,6 +1155,13 @@ def _render_profile_overlay(player_id: str):
         rpg = stats.get("rpg")
         apg = stats.get("apg")
 
+        from src.valuation import estimate_nil_value
+        nil_value = estimate_nil_value({
+            "ppg": ppg,
+            "rpg": rpg,
+            "apg": apg,
+        })
+
         height = _fmt_height(profile.get("height_in")) if profile.get("height_in") else "—"
         weight = f"{int(profile.get('weight_lb'))} lbs" if profile.get("weight_lb") else "—"
         hs = profile.get("high_school") or "—"
@@ -1217,6 +1224,7 @@ def _render_profile_overlay(player_id: str):
                   <div style="font-size:1.05rem; letter-spacing:0.5px; text-transform:uppercase; opacity:0.7;">{team_label}</div>
                   <div style="font-size:2.1rem; font-weight:700; color:white; margin-top:2px;">{title}</div>
                   <div style="margin-top:6px; opacity:0.85;">{position} • {class_year} • {height_disp} • {weight_disp}</div>
+                  <div style="margin-top:6px; display:inline-block; padding:4px 10px; border-radius:999px; background:rgba(16,185,129,0.15); color:#10b981; font-size:0.85rem;">💰 Est. NIL Value: {nil_value}</div>
                   <div style="margin-top:6px; opacity:0.7; font-size:0.95rem;">HS: {hs}</div>
                   <div style="margin-top:6px; opacity:0.85; font-size:0.95rem;">{auto_scout}</div>
                   <div style="margin-top:6px; opacity:0.9; font-size:0.9rem;">{badge_html}</div>
@@ -3207,6 +3215,18 @@ elif st.session_state.app_mode == "Search":
                 vitals[0].metric("Avg Height", avg_height)
                 vitals[1].metric("Avg Age", "—")
                 vitals[2].metric("Avg PPG", avg_ppg)
+
+                from src.valuation import estimate_nil_value_amount
+                from src.team import audit_roster_balance
+                total_value = sum(estimate_nil_value_amount(p) for p in team)
+                alerts = audit_roster_balance(team)
+                st.markdown("#### 📋 GM Report")
+                st.metric("Total Roster Valuation", f"${total_value/1000:.0f}k")
+                if alerts:
+                    for a in alerts:
+                        st.warning(a)
+                else:
+                    st.success("Roster balance looks solid.")
 
                 remove_options = [p.get("player_id") or p.get("name") for p in team if p.get("name")]
                 if remove_options:
