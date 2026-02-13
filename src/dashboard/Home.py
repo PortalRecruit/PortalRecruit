@@ -1104,6 +1104,7 @@ def _render_profile_overlay(player_id: str):
 
         with film_tab:
             from src.film import extract_clips
+            st.markdown("### 🎥 Film Room (Synergy Logs)")
             clips_text = "".join([r.get("Play", "") for r in (st.session_state.get("last_rows") or []) if r.get("Player") == title])
             clips = extract_clips(clips_text)
             if not clips:
@@ -1742,6 +1743,11 @@ with st.sidebar:
     use_hyde = st.toggle("🧠 Deep Search (HyDE)", value=False, help="Generates a 'Phantom Profile' to find players matching the concept of your search.")
     dna_target = st.text_input("🧬 Find 'The Next'...", value="")
     st.session_state["dna_target"] = dna_target
+    if st.session_state.get("dna_constraints"):
+        cons = st.session_state.get("dna_constraints") or {}
+        pos_txt = ", ".join(cons.get("positions") or [])
+        min_h = cons.get("min_height_in")
+        st.caption(f"🔒 Auto-Filters Active: {pos_txt} | Min Height: {min_h}")
     emphasis = st.multiselect(
         "💎 Emphasis Traits",
         ["🏀 Shooting", "🧠 Playmaking", "🛡️ Defense", "🚜 Rebounding", "⚡ Athleticism"],
@@ -1890,8 +1896,8 @@ elif st.session_state.app_mode == "Search":
                     )
 
                 if st.session_state.get("hyde_profile"):
-                with st.expander("🎯 Target Profile (AI Generated)", expanded=bool(st.session_state.get("dna_mode"))):
-                    st.markdown(st.session_state.get("hyde_profile"))
+                    with st.expander("🎯 Target Profile (AI Generated)", expanded=bool(st.session_state.get("dna_mode"))):
+                        st.markdown(st.session_state.get("hyde_profile"))
 
             if st.session_state.get("dna_constraints"):
                 cons = st.session_state.get("dna_constraints") or {}
