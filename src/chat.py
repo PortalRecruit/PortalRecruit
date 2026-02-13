@@ -11,6 +11,29 @@ VECTOR_DB_PATH = "data/vector_db"
 DB_PATH = "data/skout.db"
 
 
+def get_player_stats(player_name: str) -> tuple[float | None, float | None, float | None]:
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT player_id FROM players WHERE full_name = ? LIMIT 1", (player_name,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None, None, None
+    player_id = row[0]
+    cur.execute("""
+        SELECT ppg, rpg, apg
+        FROM player_season_stats
+        WHERE player_id = ?
+        ORDER BY season_id DESC
+        LIMIT 1
+    """, (player_id,))
+    stats = cur.fetchone()
+    conn.close()
+    if not stats:
+        return None, None, None
+    return stats[0], stats[1], stats[2]
+
+
 def ask_scout(user_question: str) -> str:
     query = (user_question or "").strip()
     if not query:
@@ -42,7 +65,8 @@ def ask_scout(user_question: str) -> str:
     h = row[1] if row else None
     w = row[2] if row else None
 
-    stats = {"ppg": 0, "rpg": 0, "apg": 0}
+    ppg, rpg, apg = get_player_stats(top_name)
+    stats = {"ppg": ppg or 0, "rpg": rpg or 0, "apg": apg or 0}
     badges = assign_archetypes(stats, "", pos)
     h_pct = calculate_percentile(h, pos, metric="h") if h else 0
     w_pct = calculate_percentile(w, pos, metric="w") if w else 0
@@ -51,4 +75,7 @@ def ask_scout(user_question: str) -> str:
     if "rebound" in query.lower() and "glass cleaner" not in badge_label.lower():
         badge_label = "Glass Cleaner"
 
-    return f"I found {top_name} (Score: {score:.2f}). He profiles as a {badge_label}. {scout}"
+    stats_str = ""
+    if ppg is not None and rpg is not None:
+        stats_str = f"({ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG)"
+    return f"I found {top_name} {stats_str} (Score: {score:.2f}). He profiles as a {badge_label}. {scout}"

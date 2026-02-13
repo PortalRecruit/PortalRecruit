@@ -2903,6 +2903,55 @@ elif st.session_state.app_mode == "Search":
                         from src.visuals import generate_radar_chart
                         fig = generate_radar_chart(a_profile, b_profile, query=query_fit)
                         st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown("### 🎥 Film Breakdown")
+                        try:
+                            from src.film import clean_clip_text, extract_shot_locations
+                            from src.visuals import generate_tendency_comparison, generate_zone_chart
+                            conn = sqlite3.connect(DB_PATH_STR)
+                            cur = conn.cursor()
+                            cur.execute("""
+                                SELECT p.player_name, g.home_team, g.away_team, p.clock_seconds, p.clock_display, p.description
+                                FROM plays p
+                                JOIN games g ON g.game_id = p.game_id
+                                WHERE p.player_name = ?
+                                LIMIT 20
+                            """, (player_a,))
+                            rows_a = cur.fetchall()
+                            cur.execute("""
+                                SELECT p.player_name, g.home_team, g.away_team, p.clock_seconds, p.clock_display, p.description
+                                FROM plays p
+                                JOIN games g ON g.game_id = p.game_id
+                                WHERE p.player_name = ?
+                                LIMIT 20
+                            """, (player_b,))
+                            rows_b = cur.fetchall()
+                            conn.close()
+                            def _to_clips(rows):
+                                clips = []
+                                for _, home, away, clock_s, clock_disp, desc in rows:
+                                    opponent = away if home == "Louisville" else home
+                                    sec = clock_s if clock_s is not None else None
+                                    if sec is None:
+                                        try:
+                                            sec = int(clock_disp)
+                                        except Exception:
+                                            sec = None
+                                    time = f"{int(sec)//60}:{int(sec)%60:02d}" if sec is not None else str(clock_disp)
+                                    clips.append(clean_clip_text(f"VS {opponent} ({time}) - {desc}"))
+                                return clips
+                            clips_a = _to_clips(rows_a)
+                            clips_b = _to_clips(rows_b)
+                            left_chart, right_chart = st.columns(2)
+                            with left_chart:
+                                fig_t = generate_tendency_comparison(clips_a, clips_b, label_a=player_a, label_b=player_b)
+                                st.plotly_chart(fig_t, use_container_width=True)
+                            with right_chart:
+                                zones = extract_shot_locations(clips_a)
+                                st.plotly_chart(generate_zone_chart(zones), use_container_width=True)
+                        except Exception as e:
+                            st.info(f"Film breakdown unavailable: {e}")
+
                         left, right = st.columns(2)
                         with left:
                             st.markdown("#### " + str(a_profile.get("name")))

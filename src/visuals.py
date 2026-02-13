@@ -87,3 +87,29 @@ def generate_zone_chart(locations: dict):
         font=dict(family="Inter, sans-serif", color="#f3f6ff"),
     )
     return fig
+
+
+def generate_tendency_comparison(player_a_clips, player_b_clips, label_a: str = "Player A", label_b: str = "Player B"):
+    import plotly.graph_objects as go
+    from src.film import analyze_tendencies
+
+    a_t = analyze_tendencies(player_a_clips)
+    b_t = analyze_tendencies(player_b_clips)
+    keys = sorted(set(a_t.keys()) | set(b_t.keys()))
+    if not keys:
+        return go.Figure()
+    a_vals = [a_t.get(k, 0) for k in keys]
+    b_vals = [b_t.get(k, 0) for k in keys]
+
+    fig = go.Figure()
+    fig.add_bar(name=label_a, x=keys, y=a_vals, marker_color="#31d0ff")
+    fig.add_bar(name=label_b, x=keys, y=b_vals, marker_color="#f6c453")
+    fig.update_layout(
+        barmode="group",
+        margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", color="#f3f6ff"),
+        yaxis=dict(title="%"),
+    )
+    return fig
