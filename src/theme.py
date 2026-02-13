@@ -1,7 +1,14 @@
 import base64
-import os
 from pathlib import Path
 import streamlit as st
+
+# Resolve project root + asset paths
+SRC_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SRC_DIR.parent
+WWW_DIR = PROJECT_ROOT / "www"
+VIDEO_PATH = WWW_DIR / "PORTALRECRUIT_ANIMATED_LOGO.mp4"
+BANNER_LOGO_PATH = WWW_DIR / "PRLOGO.png"
+ICON_LOGO_PATH = WWW_DIR / "PR_full_vector.png"
 
 WAR_ROOM_CSS = """
 <style>
@@ -149,11 +156,16 @@ FALLBACK_BG_HTML = """
 """
 
 
+def _file_to_base64(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
 def inject_warroom_theme():
     st.markdown(WAR_ROOM_CSS, unsafe_allow_html=True)
-    video_path = Path("www/PORTALRECRUIT_ANIMATED_LOGO.mp4")
-    if video_path.exists():
-        b64 = base64.b64encode(video_path.read_bytes()).decode("utf-8")
+    b64 = _file_to_base64(VIDEO_PATH)
+    if b64:
         html = f"""
         <div class="pr-video-bg-wrap">
           <video class="pr-video-bg" autoplay loop muted playsinline>

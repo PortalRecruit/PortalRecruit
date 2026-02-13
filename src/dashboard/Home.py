@@ -22,6 +22,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Debug cache clear (enable by adding ?clear_cache=1 to URL)
+try:
+    if st.query_params.get("clear_cache") == "1":
+        st.cache_resource.clear()
+except Exception:
+    pass
+
 from src import theme as theme
 try:
     theme.inject_warroom_theme()
