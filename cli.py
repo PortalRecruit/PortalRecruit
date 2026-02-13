@@ -414,6 +414,9 @@ if __name__ == "__main__":
     sim = sub.add_parser("similar")
     sim.add_argument("name")
 
+    ask = sub.add_parser("ask")
+    ask.add_argument("question")
+
     viz = sub.add_parser("visualize")
     viz.add_argument("query")
 
@@ -569,6 +572,9 @@ if __name__ == "__main__":
         for k, v in zones.items():
             pct = int(round((v / total) * 100))
             print(f"{k}: {pct}%")
+    elif args.command == "ask":
+        from src.chat import ask_scout
+        print(ask_scout(args.question))
     elif args.command == "similar":
         from src.similarity import find_similar_players
         matches = find_similar_players(args.name, top_k=5)

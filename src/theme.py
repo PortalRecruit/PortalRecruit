@@ -159,7 +159,11 @@ FALLBACK_BG_HTML = """
 def _file_to_base64(path: Path) -> str | None:
     if not path.exists():
         return None
-    return base64.b64encode(path.read_bytes()).decode("utf-8")
+    try:
+        return base64.b64encode(path.read_bytes()).decode("utf-8")
+    except Exception as e:
+        print(f"[theme] Asset load warning: {e}")
+        return None
 
 
 def inject_warroom_theme():

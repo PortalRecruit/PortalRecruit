@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+# Fix Python Path to include Project Root
+root_dir = Path(__file__).resolve().parent.parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+
 import traceback
 import streamlit as st
-import sys
 import os
 import re
 import math
@@ -9,7 +15,6 @@ import base64
 import time
 import zipfile
 import sqlite3
-from pathlib import Path
 from difflib import SequenceMatcher
 import requests
 import mimetypes
@@ -1774,6 +1779,18 @@ with st.sidebar:
         ["🏀 Shooting", "🧠 Playmaking", "🛡️ Defense", "🚜 Rebounding", "⚡ Athleticism"],
         help="Select traits to prioritize in the search results.",
     )
+
+    st.markdown("---")
+    st.markdown("### 💬 Ask the Scout")
+    question = st.text_input("Ask a quick scouting question", value="")
+    if question:
+        from src.chat import ask_scout
+        answer = ask_scout(question)
+        try:
+            with st.chat_message("assistant"):
+                st.write(answer)
+        except Exception:
+            st.info(answer)
     st.session_state["search_alpha"] = search_alpha
     st.session_state["search_beta"] = search_beta
     st.session_state["use_hyde"] = use_hyde
