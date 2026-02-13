@@ -58,6 +58,30 @@ def analyze_tendencies(clips_list: List[str]) -> Dict[str, int]:
     return {k: int(round((v / total_actions) * 100)) for k, v in totals.items()}
 
 
+def extract_shot_locations(clips_list: List[str]) -> Dict[str, int]:
+    zones = {
+        "Corners": 0,
+        "Wings": 0,
+        "Top": 0,
+        "Post": 0,
+        "Paint": 0,
+    }
+    for clip in clips_list:
+        txt = clip.lower()
+        if "left corner" in txt or "right corner" in txt:
+            zones["Corners"] += 1
+        if "left wing" in txt or "right wing" in txt:
+            zones["Wings"] += 1
+        if "top of key" in txt or "high pnr" in txt or "high p&r" in txt or "high pnr" in txt:
+            zones["Top"] += 1
+        if "left block" in txt or "right block" in txt or "post-up" in txt or "post up" in txt:
+            zones["Post"] += 1
+        if "basket" in txt or "rim" in txt or "layup" in txt or "dunk" in txt:
+            zones["Paint"] += 1
+    zones = {k: v for k, v in zones.items() if v > 0}
+    return zones
+
+
 def extract_clips(player_text: str) -> List[str]:
     if not player_text:
         return []

@@ -70,3 +70,20 @@ def generate_radar_chart(player_a: Dict[str, Any], player_b: Dict[str, Any], que
         font=dict(family="Inter, sans-serif", color="#f3f6ff"),
     )
     return fig
+
+
+def generate_zone_chart(locations: dict):
+    import plotly.graph_objects as go
+    if not locations:
+        return go.Figure()
+    labels = list(locations.keys())
+    values = list(locations.values())
+    fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=0.35)])
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=True,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", color="#f3f6ff"),
+    )
+    return fig

@@ -562,6 +562,13 @@ if __name__ == "__main__":
         print("\n".join(cleaned[:10]))
         print("\nTendencies:")
         print(analyze_tendencies(cleaned))
+        from src.film import extract_shot_locations
+        zones = extract_shot_locations(cleaned)
+        total = sum(zones.values()) or 1
+        print("\nHot Zones:")
+        for k, v in zones.items():
+            pct = int(round((v / total) * 100))
+            print(f"{k}: {pct}%")
     elif args.command == "similar":
         from src.similarity import find_similar_players
         matches = find_similar_players(args.name, top_k=5)

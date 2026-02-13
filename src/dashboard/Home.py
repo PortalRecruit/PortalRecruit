@@ -1103,12 +1103,14 @@ def _render_profile_overlay(player_id: str):
                             st.rerun()
 
         with film_tab:
-            from src.film import extract_clips, clean_clip_text, analyze_tendencies
+            from src.film import extract_clips, clean_clip_text, analyze_tendencies, extract_shot_locations
+            from src.visuals import generate_zone_chart
             st.markdown("### 🎥 Film Room (Synergy Logs)")
             clips_text = "".join([r.get("Play", "") for r in (st.session_state.get("last_rows") or []) if r.get("Player") == title])
             raw_clips = extract_clips(clips_text)
             cleaned = [clean_clip_text(c) for c in raw_clips]
             tendencies = analyze_tendencies(cleaned)
+            zones = extract_shot_locations(cleaned)
             col1, col2 = st.columns([2, 1])
             with col1:
                 if not cleaned:
@@ -1127,6 +1129,10 @@ def _render_profile_overlay(player_id: str):
                     for k, v in tendencies.items():
                         st.progress(v)
                         st.caption(f"{k}: {v}%")
+                st.markdown("**🔥 Activity Heatmap**")
+                st.caption(f"Based on text analysis of {len(cleaned)} logs.")
+                fig = generate_zone_chart(zones)
+                st.plotly_chart(fig, use_container_width=True)
 
         cache = st.session_state.get("player_meta_cache", {}) or {}
         meta_cache = cache.get(pid, {}) if pid else {}
@@ -1926,7 +1932,7 @@ elif st.session_state.app_mode == "Search":
 
             st.markdown("<h3 style='margin-top:40px;'>Top Prospects</h3>", unsafe_allow_html=True)
 
-                for player, clips in grouped.items():
+            for player, clips in grouped.items():
                     try:
                         pid = _normalize_player_id(clips[0].get("Player ID")) if clips else None
                         score = clips[0].get("Score", 0) if clips else 0
