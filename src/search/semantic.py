@@ -386,6 +386,7 @@ def semantic_search(
     return_breakdowns: bool = False,
     alpha_override: float | None = None,
     beta_override: float | None = None,
+    use_hyde: bool = False,
 ) -> list[str] | tuple[list[str], dict[str, dict]]:
     """Run semantic search with normalized embeddings + optional rerank blend.
 
@@ -431,6 +432,16 @@ def semantic_search(
 
     try:
         query_vec = encode_query(expanded_query)
+        if use_hyde:
+            try:
+                from src.hyde import generate_hypothetical_bio
+                hyde_profile = generate_hypothetical_bio(query)
+                print(f"[HyDE] {hyde_profile}")
+                hyde_vec = encode_query(hyde_profile)
+                # average raw and hyde for balance
+                query_vec = [(a + b) / 2.0 for a, b in zip(query_vec, hyde_vec)]
+            except Exception:
+                pass
         results = collection.query(
             query_embeddings=[query_vec],
             n_results=fetch_n,

@@ -1727,8 +1727,10 @@ with st.sidebar:
     st.markdown("### Search Configuration")
     search_alpha = st.slider("Alpha (Semantic)", 0.0, 5.0, 1.2, 0.1)
     search_beta = st.slider("Beta (Size)", 0.0, 10.0, 3.0, 0.1)
+    use_hyde = st.toggle("🧠 Deep Search (HyDE)", value=False, help="Generates a 'Phantom Profile' to find players matching the concept of your search.")
     st.session_state["search_alpha"] = search_alpha
     st.session_state["search_beta"] = search_beta
+    st.session_state["use_hyde"] = use_hyde
 
     from src.roster import get_roster
     roster = get_roster()
@@ -1866,7 +1868,11 @@ elif st.session_state.app_mode == "Search":
                         unsafe_allow_html=True,
                     )
 
-                st.markdown("<h3 style='margin-top:40px;'>Top Prospects</h3>", unsafe_allow_html=True)
+                if st.session_state.get("hyde_profile"):
+                with st.expander("🎯 Target Profile (AI Generated)"):
+                    st.markdown(st.session_state.get("hyde_profile"))
+
+            st.markdown("<h3 style='margin-top:40px;'>Top Prospects</h3>", unsafe_allow_html=True)
 
                 for player, clips in grouped.items():
                     try:
@@ -2118,6 +2124,7 @@ elif st.session_state.app_mode == "Search":
             cached_play_ids = _cache_get(cache_key)
             search_alpha = float(st.session_state.get("search_alpha", 1.2))
             search_beta = float(st.session_state.get("search_beta", 3.0))
+            use_hyde = bool(st.session_state.get("use_hyde", False))
             breakdowns = {}
             if cached_play_ids is not None:
                 play_ids = cached_play_ids
@@ -2134,6 +2141,7 @@ elif st.session_state.app_mode == "Search":
                             return_breakdowns=True,
                             alpha_override=search_alpha,
                             beta_override=search_beta,
+                            use_hyde=use_hyde,
                         )
                     except:
                         play_ids = []
@@ -2152,6 +2160,7 @@ elif st.session_state.app_mode == "Search":
                                 return_breakdowns=True,
                                 alpha_override=search_alpha,
                                 beta_override=search_beta,
+                                use_hyde=use_hyde,
                             )
                         except:
                             play_ids = []
@@ -2195,6 +2204,7 @@ elif st.session_state.app_mode == "Search":
                         return_breakdowns=True,
                         alpha_override=search_alpha,
                         beta_override=search_beta,
+                        use_hyde=use_hyde,
                     )
                 except:
                     st.error("Search index error.")
@@ -2205,6 +2215,14 @@ elif st.session_state.app_mode == "Search":
             if elapsed < 5: time.sleep(5 - elapsed)
 
             st.markdown("<script>document.body.classList.remove('searching');</script>", unsafe_allow_html=True)
+
+            if use_hyde:
+                try:
+                    from src.hyde import generate_hypothetical_bio
+                    hyde_profile = generate_hypothetical_bio(query)
+                    st.session_state["hyde_profile"] = hyde_profile
+                except Exception:
+                    st.session_state["hyde_profile"] = ""
 
             if not play_ids:
                 st.warning("No results found.")
