@@ -2777,9 +2777,19 @@ elif st.session_state.app_mode == "Search":
                 with col1:
                     tier = st.selectbox(f"Tier — {pname}", tiers, index=tiers.index(p.get("tier") or "Unranked"), key=f"tier_{pname}")
                     update_player_tier(pname, tier)
+                    if st.button(f"✨ Generate Deep Dive — {pname}", key=f"deep_{pname}"):
+                        from src.ghostwriter import generate_scouting_report
+                        with st.spinner("Writing deep dive..."):
+                            report = generate_scouting_report(p)
+                        timestamp = time.strftime("%Y-%m-%d %H:%M")
+                        updated = (p.get("gm_notes") or "") + f"\n\n### Deep Dive ({timestamp})\n" + report
+                        update_player_notes(pname, updated)
+                        st.session_state[f"deep_report_{pname}"] = report
                 with col2:
                     note = st.text_area(f"GM Notes — {pname}", value=p.get("gm_notes") or "", key=f"note_{pname}")
                     update_player_notes(pname, note)
+                    if st.session_state.get(f"deep_report_{pname}"):
+                        st.markdown(st.session_state.get(f"deep_report_{pname}"))
             replacement_name = st.selectbox("Find Replacement For", [r.get("name") for r in roster], key="replacement_select")
             if st.button("Find Replacement", key="replacement_btn"):
                 from src.similarity import find_similar_players
@@ -2896,7 +2906,7 @@ elif st.session_state.app_mode == "Search":
         roster = get_roster()
         tiers = ["S (Starter)", "A (Rotation)", "B (Deep Bench)", "C (Develop)", "F (Cut)", "Unranked"]
         from src.archetypes import assign_archetypes
-        for tier in tiers:
+        for tier in tiers[:-1]:
             group = [p for p in roster if (p.get("tier") or "Unranked") == tier]
             st.markdown(f"#### {tier} — {len(group)}")
             if not group:
@@ -2907,3 +2917,11 @@ elif st.session_state.app_mode == "Search":
                 badges = assign_archetypes(stats, " ".join(p.get("biometric_tags") or []), p.get("position"))
                 badge_str = " ".join(badges) if badges else ""
                 st.markdown("- **{}** {}".format(p.get("name"), badge_str))
+
+        inbox = [p for p in roster if (p.get("tier") or "Unranked") == "Unranked"]
+        st.markdown(f"#### Inbox (Unranked) — {len(inbox)}")
+        for p in inbox:
+            stats = {"ppg": p.get("ppg"), "rpg": p.get("rpg"), "apg": p.get("apg"), "weight_lb": p.get("weight_lb")}
+            badges = assign_archetypes(stats, " ".join(p.get("biometric_tags") or []), p.get("position"))
+            badge_str = " ".join(badges) if badges else ""
+            st.markdown("- **{}** {}".format(p.get("name"), badge_str))

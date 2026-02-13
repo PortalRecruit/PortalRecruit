@@ -75,6 +75,9 @@ def generate_team_packet(roster_list: List[Dict[str, Any]]) -> str:
         tags = p.get("biometric_tags") or []
         tag_str = ", ".join([str(t).title() for t in tags])
         notes = p.get("notes") or ""
+        deep_dive = ""
+        if "Deep Dive" in notes or "Offensive Role" in notes:
+            deep_dive = f"\n\n## Deep Dive\n{notes}"
         blocks.append(
             "\n".join([
                 f"# {name}",
@@ -84,6 +87,7 @@ def generate_team_packet(roster_list: List[Dict[str, Any]]) -> str:
                 f"**AI Position:** {canonical}",
                 f"**Biometric Tags:** {tag_str}",
                 f"**Scout Notes:** {notes}",
+                deep_dive,
             ])
         )
     return "\n\n---\n\n".join(blocks)
