@@ -1258,6 +1258,40 @@ def _render_profile_overlay(player_id: str):
             cols[1].metric("RPG", _val(stats.get("rpg")))
             cols[2].metric("APG", _val(stats.get("apg")))
 
+        from src.team import get_team, get_team_averages, calculate_impact
+        team = get_team()
+        if team:
+            avgs = get_team_averages()
+            impact = calculate_impact({
+                "height_in": profile.get("height_in"),
+                "weight_lb": profile.get("weight_lb"),
+                "ppg": stats.get("ppg") if stats else None,
+                "rpg": stats.get("rpg") if stats else None,
+                "apg": stats.get("apg") if stats else None,
+                "three_pt_pct": stats.get("shot3_percent") if stats else None,
+            }, avgs)
+            if impact:
+                st.markdown("### 📉 Roster Impact")
+                cols = st.columns(3)
+                ppg_avg = avgs.get("ppg")
+                rpg_avg = avgs.get("rpg")
+                apg_avg = avgs.get("apg")
+                cols[0].metric(
+                    "Team PPG",
+                    f"{ppg_avg:.1f}" if ppg_avg is not None else "—",
+                    delta=f"{impact.get('ppg_diff', 0):+.1f}" if impact.get("ppg_diff") is not None else None,
+                )
+                cols[1].metric(
+                    "Team RPG",
+                    f"{rpg_avg:.1f}" if rpg_avg is not None else "—",
+                    delta=f"{impact.get('rpg_diff', 0):+.1f}" if impact.get("rpg_diff") is not None else None,
+                )
+                cols[2].metric(
+                    "Team APG",
+                    f"{apg_avg:.1f}" if apg_avg is not None else "—",
+                    delta=f"{impact.get('apg_diff', 0):+.1f}" if impact.get("apg_diff") is not None else None,
+                )
+
         st.markdown("### Scout Breakdown")
         with st.spinner("The Old Recruiter is watching tape..."):
             breakdown = generate_scout_breakdown(profile)
@@ -2036,7 +2070,7 @@ elif st.session_state.app_mode == "Search":
                         </div>
                         """
                         st.markdown(card_html, unsafe_allow_html=True)
-                        btn_cols = st.columns([1, 1, 2])
+                        btn_cols = st.columns([1, 1, 1, 2])
                         if pid and btn_cols[0].button("View", key=f"btn_{pid}"):
                             st.session_state["pending_selected_player"] = pid
                             st.session_state["selected_player"] = pid
@@ -2055,6 +2089,22 @@ elif st.session_state.app_mode == "Search":
                                 "class_year": clips[0].get("Class") if clips else "",
                             })
                             st.toast(f"Added {player} to shortlist.")
+
+                        from src.team import add_to_team
+                        if btn_cols[2].button("🏠 My Team", key=f"myteam_{pid}"):
+                            added = add_to_team({
+                                "player_id": pid,
+                                "name": player,
+                                "position": pos,
+                                "team": team,
+                                "height_in": ht,
+                                "weight_lb": wt,
+                                "class_year": clips[0].get("Class") if clips else "",
+                                "ppg": ppg_val,
+                                "rpg": rpg_val,
+                                "apg": apg_val,
+                            })
+                            st.toast(f"Added {player} to My Team." if added else f"{player} already on My Team.")
 
                         breakdown = clips[0].get("Score Breakdown") if clips else {}
                         if isinstance(breakdown, dict) and breakdown:
@@ -2985,155 +3035,188 @@ elif st.session_state.app_mode == "Search":
                     st.error(f"Comparison failed: {e}")
     with war_room_tab:
         st.markdown("### 🏢 War Room")
-        from src.roster import get_roster, clear_roster
-        from src.exporter import generate_synergy_csv, generate_text_report, generate_team_packet
-        roster = get_roster()
-        if st.button("🧹 Clear Shortlist"):
-            clear_roster()
-            st.rerun()
-        if roster:
-            avg_height = sum([r.get("height_in") or 0 for r in roster]) / max(1, len(roster))
-            avg_weight = sum([r.get("weight_lb") or 0 for r in roster]) / max(1, len(roster))
-            pos_counts = {}
-            for r in roster:
-                pos = r.get("position") or "Unknown"
-                pos_counts[pos] = pos_counts.get(pos, 0) + 1
-            st.markdown(f"**Average Height:** {avg_height:.1f} in | **Average Weight:** {avg_weight:.1f} lb")
-            st.markdown("**Positional Breakdown:** " + ", ".join([f"{k}: {v}" for k, v in pos_counts.items()]))
-            st.dataframe(roster, use_container_width=True)
-            st.markdown("#### ✍️ GM Actions")
-            from src.roster import update_player_tier, update_player_notes
-            tiers = ["S (Starter)", "A (Rotation)", "B (Deep Bench)", "C (Develop)", "F (Cut)", "Unranked"]
-            for p in roster:
-                pname = p.get("name")
-                if not pname:
-                    continue
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    tier = st.selectbox(f"Tier — {pname}", tiers, index=tiers.index(p.get("tier") or "Unranked"), key=f"tier_{pname}")
-                    update_player_tier(pname, tier)
-                    if st.button(f"✨ Generate Deep Dive — {pname}", key=f"deep_{pname}"):
-                        from src.ghostwriter import generate_scouting_report
-                        with st.spinner("Writing deep dive..."):
-                            report = generate_scouting_report(p)
-                        timestamp = time.strftime("%Y-%m-%d %H:%M")
-                        updated = (p.get("gm_notes") or "") + f"\n\n### Deep Dive ({timestamp})\n" + report
-                        update_player_notes(pname, updated)
-                        st.session_state[f"deep_report_{pname}"] = report
-                with col2:
-                    note = st.text_area(f"GM Notes — {pname}", value=p.get("gm_notes") or "", key=f"note_{pname}")
-                    update_player_notes(pname, note)
-                    if st.session_state.get(f"deep_report_{pname}"):
-                        st.markdown(st.session_state.get(f"deep_report_{pname}"))
-            replacement_name = st.selectbox("Find Replacement For", [r.get("name") for r in roster], key="replacement_select")
-            if st.button("Find Replacement", key="replacement_btn"):
-                from src.similarity import find_similar_players
-                replacements = find_similar_players(replacement_name, top_k=5)
-                st.session_state["replacement_results"] = replacements
-            replacements = st.session_state.get("replacement_results", [])
-            if replacements:
-                st.markdown("#### Replacement Candidates")
-                for cand in replacements:
-                    st.caption("{} | {} | {:.2f}".format(cand.get("player_name"), cand.get("position") or "-", cand.get("similarity") or 0.0))
-            import pandas as pd
-            df = pd.DataFrame(roster)
-            if not df.empty:
-                if "canonical_position" in df.columns:
-                    color_col = "canonical_position"
-                elif "position" in df.columns:
-                    color_col = "position"
-                else:
-                    color_col = None
-                st.markdown("#### 🌌 Talent Galaxy")
-                map_mode = st.radio("Map View", ["Physical Map", "Skill Map"], horizontal=True)
-                if map_mode == "Physical Map":
-                    if "weight_lb" in df.columns and "height_in" in df.columns:
-                        st.markdown("#### Roster Size Map")
-                        chart = df[["weight_lb", "height_in", "name"] + ([color_col] if color_col else [])].rename(columns={"weight_lb": "Weight", "height_in": "Height", "name": "Player"})
-                        if color_col:
-                            chart = chart.rename(columns={color_col: "Position"})
-                        st.scatter_chart(chart, x="Weight", y="Height", color="Position" if color_col else None)
-                if map_mode == "Skill Map":
-                    try:
-                        import chromadb
-                        from src.visuals import generate_pca_coordinates
-                        import pandas as pd
-                        client = chromadb.PersistentClient(path=os.path.join(os.getcwd(), "data/vector_db"))
-                        collection = client.get_collection(name="skout_plays")
-                        names = []
-                        sources = []
-                        positions = []
-                        heights = []
-                        embeddings = []
-                        # shortlist
-                        for r in roster:
-                            pname = r.get("name")
-                            if not pname:
-                                continue
-                            conn = sqlite3.connect(DB_PATH_STR)
-                            cur = conn.cursor()
-                            cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
-                            row = cur.fetchone()
-                            if not row:
-                                cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+        shortlist_tab, my_team_tab = st.tabs(["Shortlist", "🏠 My Team"])
+
+        with shortlist_tab:
+            from src.roster import get_roster, clear_roster
+            from src.exporter import generate_synergy_csv, generate_text_report, generate_team_packet
+            roster = get_roster()
+            if st.button("🧹 Clear Shortlist"):
+                clear_roster()
+                st.rerun()
+            if roster:
+                avg_height = sum([r.get("height_in") or 0 for r in roster]) / max(1, len(roster))
+                avg_weight = sum([r.get("weight_lb") or 0 for r in roster]) / max(1, len(roster))
+                pos_counts = {}
+                for r in roster:
+                    pos = r.get("position") or "Unknown"
+                    pos_counts[pos] = pos_counts.get(pos, 0) + 1
+                st.markdown(f"**Average Height:** {avg_height:.1f} in | **Average Weight:** {avg_weight:.1f} lb")
+                st.markdown("**Positional Breakdown:** " + ", ".join([f"{k}: {v}" for k, v in pos_counts.items()]))
+                st.dataframe(roster, use_container_width=True)
+                st.markdown("#### ✍️ GM Actions")
+                from src.roster import update_player_tier, update_player_notes
+                tiers = ["S (Starter)", "A (Rotation)", "B (Deep Bench)", "C (Develop)", "F (Cut)", "Unranked"]
+                for p in roster:
+                    pname = p.get("name")
+                    if not pname:
+                        continue
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        tier = st.selectbox(f"Tier — {pname}", tiers, index=tiers.index(p.get("tier") or "Unranked"), key=f"tier_{pname}")
+                        update_player_tier(pname, tier)
+                        if st.button(f"✨ Generate Deep Dive — {pname}", key=f"deep_{pname}"):
+                            from src.ghostwriter import generate_scouting_report
+                            with st.spinner("Writing deep dive..."):
+                                report = generate_scouting_report(p)
+                            timestamp = time.strftime("%Y-%m-%d %H:%M")
+                            updated = (p.get("gm_notes") or "") + f"\n\n### Deep Dive ({timestamp})\n" + report
+                            update_player_notes(pname, updated)
+                            st.session_state[f"deep_report_{pname}"] = report
+                    with col2:
+                        note = st.text_area(f"GM Notes — {pname}", value=p.get("gm_notes") or "", key=f"note_{pname}")
+                        update_player_notes(pname, note)
+                        if st.session_state.get(f"deep_report_{pname}"):
+                            st.markdown(st.session_state.get(f"deep_report_{pname}"))
+                replacement_name = st.selectbox("Find Replacement For", [r.get("name") for r in roster], key="replacement_select")
+                if st.button("Find Replacement", key="replacement_btn"):
+                    from src.similarity import find_similar_players
+                    replacements = find_similar_players(replacement_name, top_k=5)
+                    st.session_state["replacement_results"] = replacements
+                replacements = st.session_state.get("replacement_results", [])
+                if replacements:
+                    st.markdown("#### Replacement Candidates")
+                    for cand in replacements:
+                        st.caption("{} | {} | {:.2f}".format(cand.get("player_name"), cand.get("position") or "-", cand.get("similarity") or 0.0))
+                import pandas as pd
+                df = pd.DataFrame(roster)
+                if not df.empty:
+                    if "canonical_position" in df.columns:
+                        color_col = "canonical_position"
+                    elif "position" in df.columns:
+                        color_col = "position"
+                    else:
+                        color_col = None
+                    st.markdown("#### 🌌 Talent Galaxy")
+                    map_mode = st.radio("Map View", ["Physical Map", "Skill Map"], horizontal=True)
+                    if map_mode == "Physical Map":
+                        if "weight_lb" in df.columns and "height_in" in df.columns:
+                            st.markdown("#### Roster Size Map")
+                            chart = df[["weight_lb", "height_in", "name"] + ([color_col] if color_col else [])].rename(columns={"weight_lb": "Weight", "height_in": "Height", "name": "Player"})
+                            if color_col:
+                                chart = chart.rename(columns={color_col: "Position"})
+                            st.scatter_chart(chart, x="Weight", y="Height", color="Position" if color_col else None)
+                    if map_mode == "Skill Map":
+                        try:
+                            import chromadb
+                            from src.visuals import generate_pca_coordinates
+                            import pandas as pd
+                            client = chromadb.PersistentClient(path=os.path.join(os.getcwd(), "data/vector_db"))
+                            collection = client.get_collection(name="skout_plays")
+                            names = []
+                            sources = []
+                            positions = []
+                            heights = []
+                            embeddings = []
+                            # shortlist
+                            for r in roster:
+                                pname = r.get("name")
+                                if not pname:
+                                    continue
+                                conn = sqlite3.connect(DB_PATH_STR)
+                                cur = conn.cursor()
+                                cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
                                 row = cur.fetchone()
-                            conn.close()
-                            if not row:
-                                continue
-                            play_id = row[0]
-                            res = collection.get(ids=[play_id], include=["embeddings", "metadatas"])
-                            emb = res.get("embeddings")
-                            if emb is None or len(emb) == 0:
-                                continue
-                            embeddings.append(emb[0])
-                            names.append(pname)
-                            sources.append("Shortlist")
-                            positions.append(r.get("canonical_position") or r.get("position") or "")
-                            heights.append(r.get("height_in") or "")
-                        # search results
-                        recent = (st.session_state.get("search_results") or [])[:10]
-                        for r in recent:
-                            pname = r.get("Player")
-                            if not pname:
-                                continue
-                            conn = sqlite3.connect(DB_PATH_STR)
-                            cur = conn.cursor()
-                            cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
-                            row = cur.fetchone()
-                            if not row:
-                                cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                                if not row:
+                                    cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                                    row = cur.fetchone()
+                                conn.close()
+                                if not row:
+                                    continue
+                                play_id = row[0]
+                                res = collection.get(ids=[play_id], include=["embeddings", "metadatas"])
+                                emb = res.get("embeddings")
+                                if emb is None or len(emb) == 0:
+                                    continue
+                                embeddings.append(emb[0])
+                                names.append(pname)
+                                sources.append("Shortlist")
+                                positions.append(r.get("canonical_position") or r.get("position") or "")
+                                heights.append(r.get("height_in") or "")
+                            # search results
+                            recent = (st.session_state.get("search_results") or [])[:10]
+                            for r in recent:
+                                pname = r.get("Player")
+                                if not pname:
+                                    continue
+                                conn = sqlite3.connect(DB_PATH_STR)
+                                cur = conn.cursor()
+                                cur.execute("SELECT play_id FROM plays WHERE player_name = ? LIMIT 1", (pname,))
                                 row = cur.fetchone()
-                            conn.close()
-                            if not row:
-                                continue
-                            play_id = row[0]
-                            res = collection.get(ids=[play_id], include=["embeddings"])
-                            emb = res.get("embeddings")
-                            if emb is None or len(emb) == 0:
-                                continue
-                            embeddings.append(emb[0])
-                            names.append(pname)
-                            sources.append("Search")
-                            positions.append(r.get("Position") or "")
-                            heights.append(r.get("Height") or "")
-                        if embeddings:
-                            coords = generate_pca_coordinates(embeddings)
-                            df_galaxy = pd.DataFrame({"x": [c[0] for c in coords], "y": [c[1] for c in coords], "Player": names, "Source": sources, "Position": positions, "Height": heights})
-                            import altair as alt
-                            chart = alt.Chart(df_galaxy).mark_circle(size=120).encode(
-                                x="x", y="y", color="Position", shape="Source", tooltip=["Player", "Position", "Height", "Source"]
-                            )
-                            st.altair_chart(chart, use_container_width=True)
-                    except Exception as e:
-                        st.warning(f"Galaxy view unavailable: {e}")
-            csv_data = generate_synergy_csv(roster)
-            report = generate_text_report(roster)
-            packet = generate_team_packet(roster)
-            st.download_button("⬇️ Export for Synergy (CSV)", csv_data, file_name="roster_export.csv")
-            st.download_button("📄 Download Report (TXT)", report, file_name="roster_report.txt")
-            st.download_button("📄 Download Team Packet (MD)", packet, file_name="team_packet.md")
-        else:
-            st.info("Shortlist is empty.")
+                                if not row:
+                                    cur.execute("SELECT play_id FROM plays WHERE player_name LIKE ? LIMIT 1", (f"%{pname.split()[-1]}%",))
+                                    row = cur.fetchone()
+                                conn.close()
+                                if not row:
+                                    continue
+                                play_id = row[0]
+                                res = collection.get(ids=[play_id], include=["embeddings"])
+                                emb = res.get("embeddings")
+                                if emb is None or len(emb) == 0:
+                                    continue
+                                embeddings.append(emb[0])
+                                names.append(pname)
+                                sources.append("Search")
+                                positions.append(r.get("Position") or "")
+                                heights.append(r.get("Height") or "")
+                            if embeddings:
+                                coords = generate_pca_coordinates(embeddings)
+                                df_galaxy = pd.DataFrame({"x": [c[0] for c in coords], "y": [c[1] for c in coords], "Player": names, "Source": sources, "Position": positions, "Height": heights})
+                                import altair as alt
+                                chart = alt.Chart(df_galaxy).mark_circle(size=120).encode(
+                                    x="x", y="y", color="Position", shape="Source", tooltip=["Player", "Position", "Height", "Source"]
+                                )
+                                st.altair_chart(chart, use_container_width=True)
+                        except Exception as e:
+                            st.warning(f"Galaxy view unavailable: {e}")
+                csv_data = generate_synergy_csv(roster)
+                report = generate_text_report(roster)
+                packet = generate_team_packet(roster)
+                st.download_button("⬇️ Export for Synergy (CSV)", csv_data, file_name="roster_export.csv")
+                st.download_button("📄 Download Report (TXT)", report, file_name="roster_report.txt")
+                st.download_button("📄 Download Team Packet (MD)", packet, file_name="team_packet.md")
+            else:
+                st.info("Shortlist is empty.")
+
+        with my_team_tab:
+            from src.team import get_team, remove_from_team, get_team_averages, set_team
+            team = get_team()
+            if team:
+                st.markdown("#### Current Roster")
+                import pandas as pd
+                df_team = pd.DataFrame(team)
+                edited = st.data_editor(df_team, num_rows="dynamic", use_container_width=True, key="my_team_editor")
+                if st.button("Save Team Changes"):
+                    set_team(edited.to_dict("records"))
+                    st.toast("Saved My Team updates.")
+
+                avgs = get_team_averages()
+                vitals = st.columns(3)
+                avg_height = _fmt_height(avgs.get("height_in")) if avgs.get("height_in") else "—"
+                avg_ppg = f"{avgs.get('ppg'):.1f}" if avgs.get("ppg") is not None else "—"
+                vitals[0].metric("Avg Height", avg_height)
+                vitals[1].metric("Avg Age", "—")
+                vitals[2].metric("Avg PPG", avg_ppg)
+
+                remove_options = [p.get("player_id") or p.get("name") for p in team if p.get("name")]
+                if remove_options:
+                    remove_choice = st.selectbox("Remove Player", remove_options, key="my_team_remove")
+                    if st.button("Remove From My Team"):
+                        removed = remove_from_team(remove_choice)
+                        st.toast("Removed from My Team." if removed else "Player not found.")
+                        st.rerun()
+            else:
+                st.info("My Team is empty.")
 
     with big_board_tab:
         st.markdown("### 🏆 The Big Board")

@@ -408,6 +408,9 @@ if __name__ == "__main__":
     s_list.add_argument("action", choices=["add", "view", "export", "clear"])
     s_list.add_argument("name", nargs="?")
 
+    team_add = sub.add_parser("team_add")
+    team_add.add_argument("name")
+
     s_film = sub.add_parser("film_check")
     s_film.add_argument("name")
 
@@ -535,6 +538,10 @@ if __name__ == "__main__":
         elif args.action == "clear":
             clear_roster()
             print("Shortlist cleared.")
+    elif args.command == "team_add":
+        from src.team import add_to_team
+        added = add_to_team(args.name)
+        print("Added to My Team." if added else "Already on My Team or not found.")
     elif args.command == "film_check":
         from src.film import clean_clip_text, analyze_tendencies
         import sqlite3
